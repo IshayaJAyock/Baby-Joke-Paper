@@ -46,8 +46,8 @@ excel_path = '/Users/jeremiah/phd_thesis/data/main_data/excel2_modified.xlsx'
 
 # User input for filtering and sorting
 sort_column = 'Total Seconds'  # Column to sort by
-min_value = 10.0  # Filter for values greater than or equal to 10 seconds
-max_value = 50.0  # Filter for values less than or equal to 300 seconds
+min_value = 5.0  # Filter for values greater than or equal to 10 seconds
+max_value = 80.0  # Filter for values less than or equal to 300 seconds
 ascending = True  # Sort in ascending order
 
 # Call the function
