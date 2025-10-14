@@ -1,0 +1,31 @@
+# Python cache and OS files
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+.env
+.venv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and artifacts
+logs/
+*.keras
+*.h5
+
+# Project outputs
+outputs/**
+analysis/figures/**
+analysis/outputs/**
+
+# Data (keep directory, ignore contents)
+data/**
+!data/.gitkeep
+
+# Backups/archives and experimental directories
+_archive/**
+_models-backup/**
+_multimodal_datasets/**
+all-files/**
+_main_ssamples-used*
