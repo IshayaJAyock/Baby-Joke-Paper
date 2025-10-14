@@ -433,7 +433,8 @@ Artifacts are written to `analysis/figures/` and `analysis/outputs/`.
 
 ## License & Citation
 
-This repository is intended for academic research and reproducibility. Please cite the associated paper if you use this work. Consider adding an explicit license (e.g., MIT) before public release.
+This repository is intended for academic research and reproducibility. 
+Please cite the associated paper if you use this work. 
 
 ## Feature Extraction Methods
 ### 1. RGB Feature Extraction (CNN-LSTM, 3D-CNN, TAN)
