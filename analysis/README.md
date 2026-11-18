@@ -1,7 +1,7 @@
 Analysis
 =======
 
-Statistical notebooks and helpers for **real-video** child-held-out runs produced by `scripts/run_*.py`.
+Statistical notebooks and helpers for child-held-out runs produced by `scripts/run_*.py`.
 
 ## Video training entrypoints (repo root)
 
@@ -18,8 +18,8 @@ Features come from `data/videos/` (Farneback / MediaPipe / ResNet / RGB). Result
 
 ## Notebooks in this folder
 
-- `multicue_ablation.ipynb` — runs / plots **real-video** multi-cue ablations via `scripts/run_multimodal_ablation.py`. Writes under `outputs/ablation_multicue/`.
-- `cross_validation_analysis.ipynb` — does **not** train; reads CV scores from `../outputs` (real-video script outputs). Do not point it at simulated `main-output/`.
+- `multicue_ablation.ipynb` — runs / plots multi-cue ablations via `scripts/run_multimodal_ablation.py`. Writes under `outputs/ablation_multicue/`.
+- `cross_validation_analysis.ipynb` — does **not** train; reads CV scores from `../outputs`.
 
 ## Reproduce
 

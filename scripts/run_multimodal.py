@@ -442,7 +442,7 @@ def process_multimodal_data(
 ) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
     """Extract real motion/face/hands features from videos.
 
-    Failed decodes / extractors are **skipped** (no synthetic zero-filled clips).
+    Failed decodes / extractors are skipped.
     Returns ``(X, y_kept, keep_indices)`` so callers can filter ChildID groups.
     """
     try:
@@ -545,7 +545,7 @@ def train_single_fold(X_train: List[np.ndarray], y_train: np.ndarray,
 def _parse_cli_args():
     import argparse
     from models.multimodal import ABLATION_VARIANTS
-    p = argparse.ArgumentParser(description="Multi-cue fusion CV on real videos")
+    p = argparse.ArgumentParser(description="Multi-cue fusion CV (video pipeline)")
     p.add_argument(
         "--ablation",
         type=str,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Multi-cue fusion ablation on real videos
-========================================
+Multi-cue fusion ablation (video pipeline)
+==========================================
 
 Runs ChildID-grouped 10-fold CV for each ablation variant of the multi-cue model:
 
@@ -84,7 +84,7 @@ VARIANT_META = {
 
 
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Multi-cue ablation CV on real videos")
+    p = argparse.ArgumentParser(description="Multi-cue ablation CV (video pipeline)")
     p.add_argument(
         "--variants",
         type=str,
