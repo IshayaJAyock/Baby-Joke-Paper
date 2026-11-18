@@ -27,6 +27,8 @@ data/**
 # Backups/archives and experimental directories
 _archive/**
 _models-backup/**
+_local_backup/
+_local_backup/**
 _multimodal_datasets/**
 all-files/**
 _main_ssamples-used*
