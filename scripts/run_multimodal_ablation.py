@@ -282,6 +282,11 @@ def main() -> None:
         max_videos=args.max_videos,
         force_reextract=args.force_reextract,
     )
+    cache = Path(args.feature_cache)
+    if cache.exists():
+        z = np.load(cache, allow_pickle=True)
+        if 'video_paths' in z.files:
+            base['cohort_video_ids'] = [Path(str(p)).stem for p in z['video_paths']]
 
     rows: List[Dict[str, Any]] = []
     for variant in variants:

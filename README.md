@@ -21,10 +21,13 @@ This repository compares four architectures for **five-class joke-type video cla
 Conclusions are limited to joke-type recognition under infant-held-out CV. Responsive-caregiving measurement is out of scope unless separately validated (see `SUBMISSION_DECLARATIONS.md`).
 
 ### Key contributions
-- Comparative evaluation of four spatiotemporal / multi-cue architectures
+- Comparative evaluation of four spatiotemporal / multi-cue architectures on a **structured-play joke-type** benchmark
 - Multi-cue fusion with cross-modal attention, gating, and cue/fusion ablations
-- Nested **ChildID-grouped** 10-fold CV (`config/shared_fold_indices.json`, seed 3443)
-- Committed reference fold artifacts in `analysis/reference_results/` (same schema as live `outputs/`)
+- Nested **ChildID-grouped** CV with inner monitoring then **outer-train refit** (`nested_on_training_children_then_refit`)
+- Committed fold predictions, inner-split indices, and manifests in `analysis/reference_results/`
+
+### Not claimed by this repository
+Joke-type accuracy is **not** a validated measure of responsive caregiving, reciprocity, sensitivity, or clinical readiness. See `SUBMISSION_DECLARATIONS.md`.
 
 ---
 
@@ -380,11 +383,14 @@ README.md                # This document
 
 ## Reproducibility
 
-- Cross-validation: nested ChildID `StratifiedGroupKFold` (outer test untouched; inner monitor for early stopping / LR schedule). Frozen splits: `config/shared_fold_indices.json`.
-- Metrics: macro-averaged precision/recall/F1 are primary; weighted counterparts are also stored.
-- Seeds: numpy=44342, tensorflow=4254, python=4422, sklearn=42, cv_random_state=3443 (initialized in each `scripts/run_*.py`).
-- Optimizer: Adam(lr=5e-4, β1=0.9, β2=0.999, ε=1e-7, clipnorm=1.0); label smoothing ε=0.05 where configured.
-- Scheduler: ReduceLROnPlateau(factor=0.5, patience=8, min_lr=1e-7) on **inner** val loss; EarlyStopping patience=15 on **inner** val accuracy.
+- Cross-validation: `StratifiedGroupKFold` on ChildID (seed 3443). **Phase 1:** train on inner-fit children; early-stop / LR on inner-monitor children (`patience=25`, `start_from_epoch=15`). **Phase 2:** refit on **all** outer-train children for `best_epoch` epochs (no callbacks). Outer test is scored once and never used as Keras `validation_data`.
+- Frozen splits: `config/shared_fold_indices.json` (index hash + cohort `row_hash` over VideoID/ChildID/label order).
+- Artifact fields: `epochs_ran = best_epoch` (refit length); `selection_epochs_ran` = selection length (typically `best_epoch + 25`); `n_train` = full outer-train fold size.
+- Metrics: report both **macro** and **weighted** precision/recall/F1; state whether values are fold-mean or pooled.
+- Seeds: numpy=44342, tensorflow=4254, python=4422, sklearn=42, cv_random_state=3443.
+- Optimizer: Adam(lr=5e-4, …); ReduceLROnPlateau on **inner** val loss (patience 8).
+- Timing: `inference_ms_per_clip` is **forward-pass only** on prepared tensors (excludes decode / MediaPipe / ResNet extract).
+- Setup: `make setup` installs `requirements.txt` (legacy `requirment.txt` redirects). Model entrypoints are under `scripts/`.
 
 ---
 

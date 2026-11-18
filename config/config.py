@@ -38,7 +38,7 @@ class StandardConfig:
     stratified_cv: bool = True              # Use stratified CV for balanced folds
     
 
-    enable_augmentation: bool = True        # Enable data augmentation
+    enable_augmentation: bool = False       # Main runners leave augmentation off
     augmentation_probability: float = 0.5   # Probability of applying augmentation
     brightness_range: float = 0.2           # Brightness variation range
     contrast_range: Tuple[float, float] = (0.8, 1.2)  # Contrast variation range

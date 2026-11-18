@@ -1,0 +1,37 @@
+{
+  "model": "TAN",
+  "protocol": "nested_on_training_children_then_refit",
+  "git_commit": "d795f344eee79376fb31ceb930d14a2154db86cf",
+  "created_at": "2026-11-18T22:19:20",
+  "config_slice": {
+    "num_epochs": 150,
+    "early_stopping_patience": 25,
+    "early_stopping_start_epoch": 15,
+    "reduce_lr_patience": 8,
+    "n_splits": 10,
+    "random_state": 3443,
+    "max_frames": 20
+  },
+  "config_hash": "29622bb353e591890ea500dd9e393544af72bb44477a77f19b26b4872e8d10a3",
+  "cohort_fingerprint": {
+    "n_rows": 1404,
+    "row_hash": "efa8a5e22a4f8082b6707b0ca6fb987eb640b4c8b14cacb0e96d457cec8c1bc4",
+    "schema": [
+      "index",
+      "video_id",
+      "child_id",
+      "label"
+    ],
+    "index_hash": "fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280"
+  },
+  "field_definitions": {
+    "best_epoch": "Epoch of best inner-monitor val_accuracy during selection",
+    "selection_epochs_ran": "Epochs executed in selection (typically best_epoch + patience)",
+    "epochs_ran": "Refit length on full outer-train (= best_epoch)",
+    "n_train": "Number of clips in the full outer-training fold (after refit)",
+    "inference_ms_per_clip": "Forward-pass only on prepared tensors; excludes decode/extract"
+  },
+  "extra": {
+    "note": "Inner splits reconstructed with GroupShuffleSplit test_size=0.2, seed 3443 (matching current code). Prediction npz remain the Oct-27 reference package."
+  }
+}

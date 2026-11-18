@@ -1,24 +1,29 @@
-Analysis
-=======
+# Analysis
 
 ## Reference results (committed)
 
-`reference_results/` holds the nested ChildID-fold package the notebooks read by default:
+`reference_results/` is the default input for notebooks:
 
-- `shared_fold_indices.json`, `all_models_performance.csv`
+- `shared_fold_indices.json` + `cohort/` (row-order fingerprint)
+- `all_models_performance.csv`
 - `{multi-cue,3d_cnn,tan,cnn_lstm}/fold_*_predictions.npz`
-- `ablation/ablation_summary.csv` (Full = Multi-cue 0.9676)
+- `{…}/fold_*_inner_splits.json` (inner-fit / monitor / outer-test)
+- `{…}/run_manifest.json`
+- `ablation/` aggregate tables (see `ablation/README.md`)
+- `manuscript_tables/` derived T1–T13 CSVs (alignment-checked)
 
-Protocol: see `reference_results/PROTOCOL.md`.
+Protocol: **nested_on_training_children_then_refit** (inner ES patience 25 → refit on full outer-train for `best_epoch`).
 
 ## Notebooks
 
-- `cross_validation_analysis.ipynb` — prefers `reference_results/`, else `../outputs/` after a local retrain
-- `multicue_ablation.ipynb` — loads reference ablation; optional video re-run
+- `cross_validation_analysis.ipynb` — prefers `reference_results/`, else `../outputs/`
+- `multicue_ablation.ipynb` — loads reference ablation aggregates
 
-## Training entrypoints (repo root)
+## Commands
 
 ```bash
+make test
+make analysis
 python scripts/run_multimodal.py
 python scripts/run_multimodal_ablation.py
 python scripts/run_3d_cnn.py

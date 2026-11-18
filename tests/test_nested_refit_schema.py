@@ -16,6 +16,9 @@ def test_reference_performance_matches_refit_schema():
     perf = pd.read_csv(ROOT / "analysis" / "reference_results" / "all_models_performance.csv")
     shared = json.loads((ROOT / "config" / "shared_fold_indices.json").read_text())
     assert shared.get("early_stopping") == "nested_on_training_children_then_refit"
+    fp = shared.get("cohort_fingerprint") or {}
+    assert fp.get("row_hash"), "cohort row_hash required"
+    assert fp.get("index_hash"), "fold index_hash required"
 
     assert (perf["epochs_ran"] == perf["best_epoch"]).all()
     # Selection run continues patience epochs past the best checkpoint.
@@ -28,6 +31,16 @@ def test_reference_performance_matches_refit_schema():
         assert int(row["n_validation"]) == len(meta["val_idx"])
 
 
+def test_inner_split_sidecars_present():
+    ref = ROOT / "analysis" / "reference_results" / "multi-cue"
+    files = sorted(ref.glob("fold_*_inner_splits.json"))
+    assert len(files) == 10
+    import json
+    d = json.loads(files[0].read_text())
+    assert set(d) >= {"fit_idx", "monitor_idx", "test_idx"}
+    assert not (set(d["fit_idx"]) & set(d["monitor_idx"]))
+
+
 def test_cv_defaults_use_patience_25():
     from config.config import StandardConfig
 
@@ -38,5 +51,6 @@ def test_cv_defaults_use_patience_25():
 
 if __name__ == "__main__":
     test_reference_performance_matches_refit_schema()
+    test_inner_split_sidecars_present()
     test_cv_defaults_use_patience_25()
     print("OK")

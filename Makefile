@@ -1,212 +1,88 @@
-# Makefile for Multimodal Deep Learning for Joke Classification
-# =====================================================================
-# 
-# This Makefile provides convenient targets to run each model and generate
-# comprehensive analysis. All outputs are saved to outputs/ directory.
+# BabyJoke joke-type video classification
+# ========================================
 #
 # Usage:
-#   make help          - Show available targets
-#   make all           - Run all models and analysis
-#   make cnn-lstm      - Run CNN-LSTM model only
-#   make 3d-cnn        - Run 3D-CNN model only
-#   make tan           - Run Temporal Attention Network only
-#   make multimodal    - Run Multimodal model only
-#   make analysis      - Generate cross-validation analysis
-#   make clean         - Clean cache and temporary files
-#   make clean-all     - Clean all outputs and cache
+#   make help
+#   make setup
+#   make multimodal | 3d-cnn | tan | cnn-lstm
+#   make ablation
+#   make analysis
+#   make test
 
-.PHONY: help all cnn-lstm 3d-cnn tan multimodal analysis clean clean-all install setup
+.PHONY: help all cnn-lstm 3d-cnn tan multimodal ablation analysis clean clean-all setup test test-setup check-results
 
-# Default target
 help:
-	@echo "Multimodal Deep Learning Framework for Joke Classification"
-	@echo "=========================================================="
-	@echo ""
-	@echo "Available targets:"
-	@echo "  help          - Show this help message"
-	@echo "  setup         - Install dependencies and setup environment"
-	@echo "  all           - Run all models and generate analysis"
-	@echo "  cnn-lstm      - Run CNN-LSTM model (10-fold CV)"
-	@echo "  3d-cnn        - Run 3D-CNN model (10-fold CV)"
-	@echo "  tan           - Run Temporal Attention Network (10-fold CV)"
-	@echo "  multimodal    - Run Multimodal model (10-fold CV)"
-	@echo "  analysis      - Generate cross-validation analysis"
-	@echo "  clean         - Clean cache and temporary files"
-	@echo "  clean-all     - Clean all outputs and cache"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make setup && make all"
-	@echo "  make cnn-lstm multimodal"
-	@echo "  make clean && make analysis"
+	@echo "BabyJoke five-class joke-type classification"
+	@echo "============================================"
+	@echo "  setup       - pip install -r requirements.txt"
+	@echo "  cnn-lstm    - Run CNN-LSTM nested ChildID CV"
+	@echo "  3d-cnn      - Run 3D-CNN nested ChildID CV"
+	@echo "  tan         - Run TAN nested ChildID CV"
+	@echo "  multimodal  - Run multi-cue nested ChildID CV"
+	@echo "  ablation    - Run seven multi-cue ablation variants"
+	@echo "  analysis    - Execute analysis notebook (reference_results or outputs/)"
+	@echo "  test        - Schema / protocol unit tests (no GPU)"
+	@echo "  clean       - Clear caches"
+	@echo "  clean-all   - Clear caches and outputs/"
 
-# Setup environment and install dependencies
 setup:
-	@echo "Setting up environment..."
-	@if [ ! -f "requirment.txt" ]; then \
-		echo "Error: requirment.txt not found"; \
-		exit 1; \
-	fi
-	@echo "Installing Python dependencies..."
-	pip install -r requirment.txt
-	@echo "Installing MediaPipe for multimodal features..."
-	pip install mediapipe || pip install mediapipe==0.10.14
-	@echo "Setup complete!"
+	@echo "Installing dependencies from requirements.txt ..."
+	pip install -r requirements.txt
+	@echo "Setup complete."
 
-# Run all models and analysis
 all: cnn-lstm 3d-cnn tan multimodal analysis
-	@echo "All models completed and analysis generated!"
-	@echo "Results available in outputs/ directory"
+	@echo "All models finished. Results under outputs/ (or use analysis/reference_results/)."
 
-# Individual model targets
 cnn-lstm:
-	@echo "Running CNN-LSTM model..."
-	python run_cnn_lstm.py
-	@echo "CNN-LSTM completed!"
+	python scripts/run_cnn_lstm.py
 
 3d-cnn:
-	@echo "🚀 Running 3D-CNN model..."
-	python run_3d_cnn.py
-	@echo "3D-CNN completed!"
+	python scripts/run_3d_cnn.py
 
 tan:
-	@echo "Running Temporal Attention Network..."
-	python run_tan.py
-	@echo "TAN completed!"
+	python scripts/run_tan.py
 
 multimodal:
-	@echo "🚀 Running Multimodal model..."
-	python run_multimodal.py
-	@echo "Multimodal completed!"
+	python scripts/run_multimodal.py
 
-# Generate cross-validation analysis
+ablation:
+	python scripts/run_multimodal_ablation.py
+
 analysis:
-	@echo "Generating cross-validation analysis..."
-	@if [ ! -f "outputs/all_models_performance.csv" ]; then \
-		echo "Error: all_models_performance.csv not found. Run models first."; \
-		exit 1; \
-	fi
-	@if [ ! -f "analysis/cross_validation_analysis.ipynb" ]; then \
-		echo "Error: cross_validation_analysis.ipynb not found"; \
+	@if [ -f "analysis/reference_results/all_models_performance.csv" ]; then \
+		echo "Using analysis/reference_results/ (notebook default)"; \
+	elif [ -f "outputs/all_models_performance.csv" ]; then \
+		echo "Using outputs/all_models_performance.csv"; \
+	else \
+		echo "Error: need analysis/reference_results/ or outputs/all_models_performance.csv"; \
 		exit 1; \
 	fi
 	jupyter nbconvert --execute --to notebook --inplace analysis/cross_validation_analysis.ipynb
-	@echo "Analysis completed! Check analysis/figures/ and analysis/outputs/"
+	@echo "Analysis notebook executed."
 
-# Clean cache and temporary files
+test:
+	python tests/test_artifact_schema.py
+	python tests/test_nested_refit_schema.py
+
 clean:
-	@echo "🧹 Cleaning cache and temporary files..."
-	rm -rf data/cache/*
-	rm -rf __pycache__/
-	rm -rf */__pycache__/
-	rm -rf .pytest_cache/
-	rm -rf *.pyc
-	rm -rf *.pyo
-	@echo "Cache cleaned!"
+	rm -rf data/cache/* __pycache__/ */__pycache__/ .pytest_cache/ *.pyc *.pyo 2>/dev/null || true
+	@echo "Cache cleaned."
 
-# Clean all outputs and cache
 clean-all: clean
-	@echo "🧹 Cleaning all outputs..."
-	rm -rf outputs/*
-	rm -rf analysis/figures/*
-	rm -rf analysis/outputs/*
-	@echo "All outputs cleaned!"
+	rm -rf outputs/* analysis/figures/* analysis/outputs/* 2>/dev/null || true
+	@echo "Outputs cleaned (reference_results retained)."
 
-# Quick test to verify setup
 test-setup:
-	@echo "Testing setup..."
-	@python -c "import tensorflow as tf; print('TensorFlow:', tf.__version__)"
-	@python -c "import cv2; print('OpenCV:', cv2.__version__)"
-	@python -c "import numpy as np; print('NumPy:', np.__version__)"
-	@python -c "import pandas as pd; print('Pandas:', pd.__version__)"
-	@python -c "import sklearn; print('Scikit-learn:', sklearn.__version__)"
-	@python -c "import matplotlib; print('Matplotlib:', matplotlib.__version__)"
-	@python -c "import seaborn; print('Seaborn:', seaborn.__version__)"
-	@python -c "try: import mediapipe; print('MediaPipe:', mediapipe.__version__); except: print('MediaPipe not installed')"
-	@echo "Setup test completed!"
+	@python -c "import tensorflow as tf; print('TensorFlow', tf.__version__)"
+	@python -c "import cv2; print('OpenCV', cv2.__version__)"
+	@python -c "import sklearn; print('sklearn', sklearn.__version__)"
 
-# Check if all models have been run
 check-results:
-	@echo "Checking results..."
+	@if [ -f "analysis/reference_results/all_models_performance.csv" ]; then \
+		echo "reference_results CSV present"; \
+		wc -l analysis/reference_results/all_models_performance.csv; \
+	fi
 	@if [ -f "outputs/all_models_performance.csv" ]; then \
-		echo "Global results CSV found"; \
-		lines=$$(wc -l < outputs/all_models_performance.csv); \
-		echo "CSV has $$lines lines (expected: 41 with header)"; \
-	else \
-		echo "Global results CSV not found"; \
-	fi
-	@for model in CNN_LSTM CNN3D TAN Multimodal; do \
-		if [ -d "outputs/$$model" ]; then \
-			echo "$$model results directory found"; \
-		else \
-			echo "$$model results directory not found"; \
-		fi; \
-	done
-
-# Run specific model combinations
-models-rgb: cnn-lstm 3d-cnn tan
-	@echo "RGB-based models completed!"
-
-models-behavioral: multimodal
-	@echo "Behavioral model completed!"
-
-# Development targets
-dev-install:
-	@echo "Installing development dependencies..."
-	pip install jupyter notebook ipykernel pytest black flake8
-
-format:
-	@echo "Formatting code..."
-	black *.py models/*.py src/*.py
-	@echo "Code formatted!"
-
-lint:
-	@echo "🔍 Linting code..."
-	flake8 *.py models/*.py src/*.py --max-line-length=100
-	@echo "Linting completed!"
-
-# Documentation targets
-docs:
-	@echo "Generating documentation..."
-	@if [ -f "README.md" ]; then \
-		echo "README.md found"; \
-	else \
-		echo "README.md not found"; \
-	fi
-	@echo "Documentation status: Complete"
-
-# Performance monitoring
-monitor:
-	@echo "Monitoring system resources..."
-	@echo "Memory usage:"
-	@ps aux | grep python | head -5
-	@echo "Disk usage:"
-	@du -sh outputs/ data/cache/ 2>/dev/null || echo "No cache/output found"
-
-# Backup results
-backup:
-	@echo "Creating backup of results..."
-	@timestamp=$$(date +%Y%m%d_%H%M%S); \
-	backup_dir="backup_$$timestamp"; \
-	mkdir -p "$$backup_dir"; \
-	cp -r outputs/ "$$backup_dir/" 2>/dev/null || echo "No outputs to backup"; \
-	cp -r analysis/ "$$backup_dir/" 2>/dev/null || echo "No analysis to backup"; \
-	echo "Backup created: $$backup_dir"
-
-# Show current status
-status:
-	@echo "Current Status:"
-	@echo "=================="
-	@echo "Project structure:"
-	@ls -la | grep -E "(README|Makefile|requirment|run_|config|models|src|analysis|outputs)"
-	@echo ""
-	@echo "Results status:"
-	@make check-results
-	@echo ""
-	@echo "Cache status:"
-	@if [ -d "data/cache" ]; then \
-		cache_size=$$(du -sh data/cache 2>/dev/null | cut -f1); \
-		cache_files=$$(find data/cache -name "*.pkl" 2>/dev/null | wc -l); \
-		echo "Cache: $$cache_size ($$cache_files files)"; \
-	else \
-		echo "No cache directory"; \
+		echo "outputs CSV present"; \
+		wc -l outputs/all_models_performance.csv; \
 	fi

@@ -34,11 +34,14 @@ from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold, Str
 from .artifact_io import (
     append_performance_row,
     canonical_model_name,
+    cohort_row_fingerprint,
     ensure_shared_folds,
     folds_index_hash,
     load_shared_folds,
     save_fold_predictions,
+    save_inner_split_indices,
     write_fold_indices_sidecar,
+    write_run_manifest,
 )
 from .results_manager import ResultsManager
 
@@ -276,6 +279,26 @@ class PureTFCrossValidation:
             folds = self._resolve_outer_folds(y, groups, n_samples)
             write_fold_indices_sidecar(self.results_dir, display_name, folds)
 
+            cohort_fp = None
+            if config.get("cohort_video_ids") is not None and groups is not None:
+                cohort_fp = cohort_row_fingerprint(
+                    list(config["cohort_video_ids"]),
+                    list(groups),
+                    list(np.asarray(y).tolist()),
+                )
+            write_run_manifest(
+                self.results_dir,
+                model_name=display_name,
+                config=config,
+                protocol="nested_on_training_children_then_refit",
+                cohort_fingerprint=cohort_fp,
+                extra={
+                    "n_samples": n_samples,
+                    "n_splits": self.n_splits,
+                    "folds_index_hash": folds_index_hash(folds),
+                },
+            )
+
             fold_results: List[Dict[str, Any]] = []
             all_predictions: List[Any] = []
             all_true_labels: List[Any] = []
@@ -307,6 +330,16 @@ class PureTFCrossValidation:
                         raise ValueError(f"Fold {fold}: ChildID leak into outer test")
                     if set(fit_idx) & set(mon_idx) or set(fit_idx) & set(test_idx) or set(mon_idx) & set(test_idx):
                         raise ValueError(f"Fold {fold}: index overlap across fit/monitor/test")
+
+                    save_inner_split_indices(
+                        self.results_dir,
+                        display_name,
+                        fold,
+                        fit_idx=fit_idx,
+                        mon_idx=mon_idx,
+                        test_idx=test_idx,
+                        groups=groups,
+                    )
 
                     X_fit = _index_data(X, fit_idx, is_multimodal)
                     X_mon = _index_data(X, mon_idx, is_multimodal)

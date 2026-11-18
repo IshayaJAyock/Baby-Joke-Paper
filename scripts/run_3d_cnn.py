@@ -296,6 +296,7 @@ def main():
         
         # Load data
         video_paths, labels, groups = load_data(config)
+        config['cohort_video_ids'] = [Path(p).stem for p in video_paths]
         
         # Process videos for 3D CNN
         X, y = process_videos_for_3d_cnn(video_paths.tolist(), labels.tolist(), config)

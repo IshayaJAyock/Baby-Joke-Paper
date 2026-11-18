@@ -14216,7 +14216,14 @@
     "n_splits": 10,
     "random_state": 3443,
     "group_column": "ChildID",
-    "index_hash": "fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280"
+    "index_hash": "fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280",
+    "row_hash": "efa8a5e22a4f8082b6707b0ca6fb987eb640b4c8b14cacb0e96d457cec8c1bc4",
+    "row_schema": [
+      "index",
+      "video_id",
+      "child_id",
+      "label"
+    ]
   },
   "early_stopping_patience": 25
 }

@@ -621,10 +621,12 @@ def main():
         
         # Load data
         video_paths, labels, groups = load_data(config)
+        config['cohort_video_ids'] = [Path(p).stem for p in video_paths]
 
         # Process multimodal data (always extract all 3 cues; model selects inputs)
         X, y, keep = process_multimodal_data(video_paths.tolist(), labels.tolist(), config)
         groups = np.asarray(groups)[keep]
+        config["cohort_video_ids"] = [Path(video_paths[i]).stem for i in keep]
 
         logger.info(f"Dataset processed: {len(X)} modalities, {y.shape}, groups={len(groups)}")
 

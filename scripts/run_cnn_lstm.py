@@ -222,6 +222,7 @@ def main():
         
         # Load data
         video_paths, labels, groups = load_data(config)
+        config['cohort_video_ids'] = [Path(p).stem for p in video_paths]
         
         # Create data processor
         from src.data_processor import PureTFDataProcessor

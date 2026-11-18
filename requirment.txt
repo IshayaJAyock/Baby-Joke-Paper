@@ -1,2 +1,2 @@
-# Typo-compatible alias. Prefer: pip install -r requirements.txt
+# Legacy filename kept for older docs. Prefer requirements.txt.
 -r requirements.txt

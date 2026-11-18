@@ -157,3 +157,129 @@ def write_fold_indices_sidecar(
     path = folder / "fold_indices.json"
     path.write_text(json.dumps({"folds": folds}, indent=2))
     return path
+
+
+def cohort_row_fingerprint(
+    video_ids: List[Any],
+    child_ids: List[Any],
+    labels: List[Any],
+) -> Dict[str, Any]:
+    """Immutable cohort order hash: (VideoID, ChildID, label) per row."""
+    import hashlib
+
+    rows = [
+        {
+            "i": i,
+            "video_id": str(v),
+            "child_id": str(c),
+            "label": int(y),
+        }
+        for i, (v, c, y) in enumerate(zip(video_ids, child_ids, labels))
+    ]
+    raw = json.dumps(rows, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return {
+        "n_rows": len(rows),
+        "row_hash": hashlib.sha256(raw).hexdigest(),
+        "schema": ["index", "video_id", "child_id", "label"],
+    }
+
+
+def save_inner_split_indices(
+    results_dir: Path,
+    model_name: str,
+    fold: int,
+    fit_idx: np.ndarray,
+    mon_idx: np.ndarray,
+    test_idx: np.ndarray,
+    groups: Optional[np.ndarray] = None,
+) -> Path:
+    """Persist inner-fit / inner-monitor / outer-test indices for one fold."""
+    folder = Path(results_dir) / model_folder(model_name)
+    folder.mkdir(parents=True, exist_ok=True)
+    payload: Dict[str, Any] = {
+        "fold": int(fold),
+        "fit_idx": [int(i) for i in np.asarray(fit_idx)],
+        "monitor_idx": [int(i) for i in np.asarray(mon_idx)],
+        "test_idx": [int(i) for i in np.asarray(test_idx)],
+        "n_fit": int(len(fit_idx)),
+        "n_monitor": int(len(mon_idx)),
+        "n_test": int(len(test_idx)),
+    }
+    if groups is not None:
+        g = np.asarray(groups)
+        payload["fit_children"] = sorted({str(x) for x in g[np.asarray(fit_idx)]})
+        payload["monitor_children"] = sorted({str(x) for x in g[np.asarray(mon_idx)]})
+        payload["test_children"] = sorted({str(x) for x in g[np.asarray(test_idx)]})
+    out = folder / f"fold_{int(fold)}_inner_splits.json"
+    out.write_text(json.dumps(payload, indent=2))
+    return out
+
+
+def write_run_manifest(
+    results_dir: Path,
+    *,
+    model_name: str,
+    config: Dict[str, Any],
+    protocol: str,
+    cohort_fingerprint: Optional[Dict[str, Any]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Path:
+    """Write provenance manifest (commit, config slice, protocol, hashes)."""
+    import hashlib
+    import subprocess
+
+    results_dir = Path(results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    commit = "unknown"
+    try:
+        commit = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(Path(__file__).resolve().parents[1]),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        pass
+    cfg_keys = [
+        "num_epochs",
+        "early_stopping_patience",
+        "early_stopping_start_epoch",
+        "reduce_lr_patience",
+        "learning_rate",
+        "batch_size",
+        "n_splits",
+        "random_state",
+        "ablation_variant",
+        "max_frames",
+    ]
+    cfg_slice = {k: config.get(k) for k in cfg_keys if k in config}
+    cfg_hash = hashlib.sha256(
+        json.dumps(cfg_slice, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    payload = {
+        "model": canonical_model_name(model_name),
+        "protocol": protocol,
+        "git_commit": commit,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "config_slice": cfg_slice,
+        "config_hash": cfg_hash,
+        "cohort_fingerprint": cohort_fingerprint or {},
+        "field_definitions": {
+            "best_epoch": "Epoch of best inner-monitor val_accuracy during selection",
+            "selection_epochs_ran": "Epochs executed in selection (typically best_epoch + patience)",
+            "epochs_ran": "Refit length on full outer-train (= best_epoch)",
+            "n_train": "Number of clips in the full outer-training fold (after refit)",
+            "inference_ms_per_clip": "Forward-pass only on prepared tensors; excludes decode/extract",
+        },
+    }
+    if extra:
+        payload["extra"] = extra
+    path = results_dir / model_folder(model_name) / "run_manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2))
+    # Also keep a top-level copy for the latest model run in this results_dir.
+    (results_dir / "run_manifest_latest.json").write_text(json.dumps(payload, indent=2))
+    return path
