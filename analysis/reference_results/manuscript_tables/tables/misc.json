@@ -1,0 +1,45 @@
+{
+ "friedman": 24.840000000000003,
+ "p": 1.6676733613399474e-05,
+ "cd": 1.4832128415481485,
+ "ranks": {
+  "Multi-cue": 1.3,
+  "3D CNN": 1.8,
+  "TAN": 3.0,
+  "CNN-LSTM": 3.9
+ },
+ "clips_right_by_k": [
+  0,
+  8,
+  63,
+  362,
+  971
+ ],
+ "rho_test_train": 0.11111111111111112,
+ "fold_spearman": {
+  "Multi-cue": {
+   "Multi-cue": 1.0,
+   "3D_CNN": 0.529,
+   "TAN": 0.122,
+   "CNN_LSTM": -0.638
+  },
+  "3D_CNN": {
+   "Multi-cue": 0.529,
+   "3D_CNN": 1.0,
+   "TAN": -0.079,
+   "CNN_LSTM": -0.2
+  },
+  "TAN": {
+   "Multi-cue": 0.122,
+   "3D_CNN": -0.079,
+   "TAN": 1.0,
+   "CNN_LSTM": 0.212
+  },
+  "CNN_LSTM": {
+   "Multi-cue": -0.638,
+   "3D_CNN": -0.2,
+   "TAN": 0.212,
+   "CNN_LSTM": 1.0
+  }
+ }
+}

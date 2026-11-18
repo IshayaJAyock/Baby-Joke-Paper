@@ -1,0 +1,13 @@
+model,true,predicted,clips
+Multi-cue,TearingPaper,NomNomNom,6
+Multi-cue,ThatsNotACat,NomNomNom,6
+Multi-cue,ThatsNotAHat,TearingPaper,6
+3D CNN,TearingPaper,ThatsNotAHat,10
+3D CNN,TearingPaper,ThatsNotACat,8
+3D CNN,TearingPaper,Peekaboo,7
+TAN,TearingPaper,ThatsNotAHat,20
+TAN,TearingPaper,NomNomNom,19
+TAN,ThatsNotAHat,TearingPaper,16
+CNN-LSTM,ThatsNotAHat,ThatsNotACat,28
+CNN-LSTM,TearingPaper,ThatsNotACat,19
+CNN-LSTM,ThatsNotACat,ThatsNotAHat,18

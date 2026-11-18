@@ -19,3 +19,6 @@ Schema guard:
 ```bash
 python tests/test_artifact_schema.py
 ```
+
+Derived manuscript tables (alignment test): `manuscript_tables/`  
+(T1–T13 / appendix CSVs + PNG figures). Checked against the fold CSV above — see `manuscript_tables/ALIGNMENT.md`.

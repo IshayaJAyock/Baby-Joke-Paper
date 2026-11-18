@@ -1,0 +1,7 @@
+variant,family,description,video_analogue,maps_to_video,mean_accuracy,sd_accuracy,pooled_accuracy,mean_auc,delta_vs_full,n_folds,n_clips,n_children,note,source
+cue_appearance,(i) cues alone,Appearance alone (24-d),cue_motion / cue_face / cue_hands (single stream),cue_*,0.9385183588352417,0.02502699837516415,0.938034188034188,0.9957904386756906,-0.02906339006932268,10,1404,88,,sim_ablation_retrain
+cue_context,(i) cues alone,Context alone (16-d),secondary stream alone,cue_*,0.8910469532591355,0.025789327077529744,0.8910256410256411,0.9890641471375549,-0.07653479564542887,10,1404,88,,sim_ablation_retrain
+concat,(ii) concat,Concat (no gate),concat (GAP→concat→project),concat,0.9754904685860563,0.01632792243258101,0.9750712250712251,0.9985532746289303,0.007908719681491871,10,1404,88,,sim_ablation_retrain
+attention_only,(iii) attention only,Attention only,"attention_only (pairwise MHA, no gate)",attention_only,,,,,,10,1404,88,N/A on simulated MultiCueNet (no cross-attn); run video attention_only,n/a
+gating_only,(iv) gating only,Gating only (= full on this stand-in),gating_only (no cross-attn),gating_only,0.9675817489045644,0.011127136127573895,0.9672364672364673,0.9981026411260464,0.0,10,1404,88,Identical to full: MultiCueNet has no attention path,main-output_identical_to_full
+full,(v) full model,Full Multi-cue (gate × appearance),full (attn + gate),full,0.9675817489045644,0.011127136127573895,0.9672364672364673,0.9981026411260464,0.0,10,1404,88,Published Table 2 Multi-cue,main-output

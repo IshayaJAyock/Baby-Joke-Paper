@@ -1,0 +1,7 @@
+view,width,probe_acc
+Multi-cue,40,0.9650997150997151
+Multi-cue (first 24 only),24,0.9430199430199431
+3D_CNN,128,1.0
+TAN,128,1.0
+CNN_LSTM,96,0.9223646723646723
+latent code (generator ceiling),24,1.0

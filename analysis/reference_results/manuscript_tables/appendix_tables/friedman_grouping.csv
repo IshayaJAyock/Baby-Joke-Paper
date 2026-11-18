@@ -1,0 +1,5 @@
+Model,Mean_Rank,Mean_Accuracy_pct,Performance_Grouping
+Multi-cue,1.3,96.75817489045644,a
+3D CNN,1.8,95.04907437973867,ab
+TAN,3.0,89.09185385904557,bc
+CNN-LSTM,3.9,82.62846408243828,c

@@ -1,0 +1,245 @@
+model,fold,check,passed
+Multi-cue,1,val_idx equals frozen split,True
+Multi-cue,1,y_true equals workbook label,True
+Multi-cue,1,y_pred is softmax argmax,True
+Multi-cue,1,CSV accuracy matches npz,True
+Multi-cue,1,CSV AUC matches npz,True
+Multi-cue,1,no child on both sides,True
+Multi-cue,2,val_idx equals frozen split,True
+Multi-cue,2,y_true equals workbook label,True
+Multi-cue,2,y_pred is softmax argmax,True
+Multi-cue,2,CSV accuracy matches npz,True
+Multi-cue,2,CSV AUC matches npz,True
+Multi-cue,2,no child on both sides,True
+Multi-cue,3,val_idx equals frozen split,True
+Multi-cue,3,y_true equals workbook label,True
+Multi-cue,3,y_pred is softmax argmax,True
+Multi-cue,3,CSV accuracy matches npz,True
+Multi-cue,3,CSV AUC matches npz,True
+Multi-cue,3,no child on both sides,True
+Multi-cue,4,val_idx equals frozen split,True
+Multi-cue,4,y_true equals workbook label,True
+Multi-cue,4,y_pred is softmax argmax,True
+Multi-cue,4,CSV accuracy matches npz,True
+Multi-cue,4,CSV AUC matches npz,True
+Multi-cue,4,no child on both sides,True
+Multi-cue,5,val_idx equals frozen split,True
+Multi-cue,5,y_true equals workbook label,True
+Multi-cue,5,y_pred is softmax argmax,True
+Multi-cue,5,CSV accuracy matches npz,True
+Multi-cue,5,CSV AUC matches npz,True
+Multi-cue,5,no child on both sides,True
+Multi-cue,6,val_idx equals frozen split,True
+Multi-cue,6,y_true equals workbook label,True
+Multi-cue,6,y_pred is softmax argmax,True
+Multi-cue,6,CSV accuracy matches npz,True
+Multi-cue,6,CSV AUC matches npz,True
+Multi-cue,6,no child on both sides,True
+Multi-cue,7,val_idx equals frozen split,True
+Multi-cue,7,y_true equals workbook label,True
+Multi-cue,7,y_pred is softmax argmax,True
+Multi-cue,7,CSV accuracy matches npz,True
+Multi-cue,7,CSV AUC matches npz,True
+Multi-cue,7,no child on both sides,True
+Multi-cue,8,val_idx equals frozen split,True
+Multi-cue,8,y_true equals workbook label,True
+Multi-cue,8,y_pred is softmax argmax,True
+Multi-cue,8,CSV accuracy matches npz,True
+Multi-cue,8,CSV AUC matches npz,True
+Multi-cue,8,no child on both sides,True
+Multi-cue,9,val_idx equals frozen split,True
+Multi-cue,9,y_true equals workbook label,True
+Multi-cue,9,y_pred is softmax argmax,True
+Multi-cue,9,CSV accuracy matches npz,True
+Multi-cue,9,CSV AUC matches npz,True
+Multi-cue,9,no child on both sides,True
+Multi-cue,10,val_idx equals frozen split,True
+Multi-cue,10,y_true equals workbook label,True
+Multi-cue,10,y_pred is softmax argmax,True
+Multi-cue,10,CSV accuracy matches npz,True
+Multi-cue,10,CSV AUC matches npz,True
+Multi-cue,10,no child on both sides,True
+Multi-cue,0,every clip scored exactly once,True
+3D_CNN,1,val_idx equals frozen split,True
+3D_CNN,1,y_true equals workbook label,True
+3D_CNN,1,y_pred is softmax argmax,True
+3D_CNN,1,CSV accuracy matches npz,True
+3D_CNN,1,CSV AUC matches npz,True
+3D_CNN,1,no child on both sides,True
+3D_CNN,2,val_idx equals frozen split,True
+3D_CNN,2,y_true equals workbook label,True
+3D_CNN,2,y_pred is softmax argmax,True
+3D_CNN,2,CSV accuracy matches npz,True
+3D_CNN,2,CSV AUC matches npz,True
+3D_CNN,2,no child on both sides,True
+3D_CNN,3,val_idx equals frozen split,True
+3D_CNN,3,y_true equals workbook label,True
+3D_CNN,3,y_pred is softmax argmax,True
+3D_CNN,3,CSV accuracy matches npz,True
+3D_CNN,3,CSV AUC matches npz,True
+3D_CNN,3,no child on both sides,True
+3D_CNN,4,val_idx equals frozen split,True
+3D_CNN,4,y_true equals workbook label,True
+3D_CNN,4,y_pred is softmax argmax,True
+3D_CNN,4,CSV accuracy matches npz,True
+3D_CNN,4,CSV AUC matches npz,True
+3D_CNN,4,no child on both sides,True
+3D_CNN,5,val_idx equals frozen split,True
+3D_CNN,5,y_true equals workbook label,True
+3D_CNN,5,y_pred is softmax argmax,True
+3D_CNN,5,CSV accuracy matches npz,True
+3D_CNN,5,CSV AUC matches npz,True
+3D_CNN,5,no child on both sides,True
+3D_CNN,6,val_idx equals frozen split,True
+3D_CNN,6,y_true equals workbook label,True
+3D_CNN,6,y_pred is softmax argmax,True
+3D_CNN,6,CSV accuracy matches npz,True
+3D_CNN,6,CSV AUC matches npz,True
+3D_CNN,6,no child on both sides,True
+3D_CNN,7,val_idx equals frozen split,True
+3D_CNN,7,y_true equals workbook label,True
+3D_CNN,7,y_pred is softmax argmax,True
+3D_CNN,7,CSV accuracy matches npz,True
+3D_CNN,7,CSV AUC matches npz,True
+3D_CNN,7,no child on both sides,True
+3D_CNN,8,val_idx equals frozen split,True
+3D_CNN,8,y_true equals workbook label,True
+3D_CNN,8,y_pred is softmax argmax,True
+3D_CNN,8,CSV accuracy matches npz,True
+3D_CNN,8,CSV AUC matches npz,True
+3D_CNN,8,no child on both sides,True
+3D_CNN,9,val_idx equals frozen split,True
+3D_CNN,9,y_true equals workbook label,True
+3D_CNN,9,y_pred is softmax argmax,True
+3D_CNN,9,CSV accuracy matches npz,True
+3D_CNN,9,CSV AUC matches npz,True
+3D_CNN,9,no child on both sides,True
+3D_CNN,10,val_idx equals frozen split,True
+3D_CNN,10,y_true equals workbook label,True
+3D_CNN,10,y_pred is softmax argmax,True
+3D_CNN,10,CSV accuracy matches npz,True
+3D_CNN,10,CSV AUC matches npz,True
+3D_CNN,10,no child on both sides,True
+3D_CNN,0,every clip scored exactly once,True
+TAN,1,val_idx equals frozen split,True
+TAN,1,y_true equals workbook label,True
+TAN,1,y_pred is softmax argmax,True
+TAN,1,CSV accuracy matches npz,True
+TAN,1,CSV AUC matches npz,True
+TAN,1,no child on both sides,True
+TAN,2,val_idx equals frozen split,True
+TAN,2,y_true equals workbook label,True
+TAN,2,y_pred is softmax argmax,True
+TAN,2,CSV accuracy matches npz,True
+TAN,2,CSV AUC matches npz,True
+TAN,2,no child on both sides,True
+TAN,3,val_idx equals frozen split,True
+TAN,3,y_true equals workbook label,True
+TAN,3,y_pred is softmax argmax,True
+TAN,3,CSV accuracy matches npz,True
+TAN,3,CSV AUC matches npz,True
+TAN,3,no child on both sides,True
+TAN,4,val_idx equals frozen split,True
+TAN,4,y_true equals workbook label,True
+TAN,4,y_pred is softmax argmax,True
+TAN,4,CSV accuracy matches npz,True
+TAN,4,CSV AUC matches npz,True
+TAN,4,no child on both sides,True
+TAN,5,val_idx equals frozen split,True
+TAN,5,y_true equals workbook label,True
+TAN,5,y_pred is softmax argmax,True
+TAN,5,CSV accuracy matches npz,True
+TAN,5,CSV AUC matches npz,True
+TAN,5,no child on both sides,True
+TAN,6,val_idx equals frozen split,True
+TAN,6,y_true equals workbook label,True
+TAN,6,y_pred is softmax argmax,True
+TAN,6,CSV accuracy matches npz,True
+TAN,6,CSV AUC matches npz,True
+TAN,6,no child on both sides,True
+TAN,7,val_idx equals frozen split,True
+TAN,7,y_true equals workbook label,True
+TAN,7,y_pred is softmax argmax,True
+TAN,7,CSV accuracy matches npz,True
+TAN,7,CSV AUC matches npz,True
+TAN,7,no child on both sides,True
+TAN,8,val_idx equals frozen split,True
+TAN,8,y_true equals workbook label,True
+TAN,8,y_pred is softmax argmax,True
+TAN,8,CSV accuracy matches npz,True
+TAN,8,CSV AUC matches npz,True
+TAN,8,no child on both sides,True
+TAN,9,val_idx equals frozen split,True
+TAN,9,y_true equals workbook label,True
+TAN,9,y_pred is softmax argmax,True
+TAN,9,CSV accuracy matches npz,True
+TAN,9,CSV AUC matches npz,True
+TAN,9,no child on both sides,True
+TAN,10,val_idx equals frozen split,True
+TAN,10,y_true equals workbook label,True
+TAN,10,y_pred is softmax argmax,True
+TAN,10,CSV accuracy matches npz,True
+TAN,10,CSV AUC matches npz,True
+TAN,10,no child on both sides,True
+TAN,0,every clip scored exactly once,True
+CNN_LSTM,1,val_idx equals frozen split,True
+CNN_LSTM,1,y_true equals workbook label,True
+CNN_LSTM,1,y_pred is softmax argmax,True
+CNN_LSTM,1,CSV accuracy matches npz,True
+CNN_LSTM,1,CSV AUC matches npz,True
+CNN_LSTM,1,no child on both sides,True
+CNN_LSTM,2,val_idx equals frozen split,True
+CNN_LSTM,2,y_true equals workbook label,True
+CNN_LSTM,2,y_pred is softmax argmax,True
+CNN_LSTM,2,CSV accuracy matches npz,True
+CNN_LSTM,2,CSV AUC matches npz,True
+CNN_LSTM,2,no child on both sides,True
+CNN_LSTM,3,val_idx equals frozen split,True
+CNN_LSTM,3,y_true equals workbook label,True
+CNN_LSTM,3,y_pred is softmax argmax,True
+CNN_LSTM,3,CSV accuracy matches npz,True
+CNN_LSTM,3,CSV AUC matches npz,True
+CNN_LSTM,3,no child on both sides,True
+CNN_LSTM,4,val_idx equals frozen split,True
+CNN_LSTM,4,y_true equals workbook label,True
+CNN_LSTM,4,y_pred is softmax argmax,True
+CNN_LSTM,4,CSV accuracy matches npz,True
+CNN_LSTM,4,CSV AUC matches npz,True
+CNN_LSTM,4,no child on both sides,True
+CNN_LSTM,5,val_idx equals frozen split,True
+CNN_LSTM,5,y_true equals workbook label,True
+CNN_LSTM,5,y_pred is softmax argmax,True
+CNN_LSTM,5,CSV accuracy matches npz,True
+CNN_LSTM,5,CSV AUC matches npz,True
+CNN_LSTM,5,no child on both sides,True
+CNN_LSTM,6,val_idx equals frozen split,True
+CNN_LSTM,6,y_true equals workbook label,True
+CNN_LSTM,6,y_pred is softmax argmax,True
+CNN_LSTM,6,CSV accuracy matches npz,True
+CNN_LSTM,6,CSV AUC matches npz,True
+CNN_LSTM,6,no child on both sides,True
+CNN_LSTM,7,val_idx equals frozen split,True
+CNN_LSTM,7,y_true equals workbook label,True
+CNN_LSTM,7,y_pred is softmax argmax,True
+CNN_LSTM,7,CSV accuracy matches npz,True
+CNN_LSTM,7,CSV AUC matches npz,True
+CNN_LSTM,7,no child on both sides,True
+CNN_LSTM,8,val_idx equals frozen split,True
+CNN_LSTM,8,y_true equals workbook label,True
+CNN_LSTM,8,y_pred is softmax argmax,True
+CNN_LSTM,8,CSV accuracy matches npz,True
+CNN_LSTM,8,CSV AUC matches npz,True
+CNN_LSTM,8,no child on both sides,True
+CNN_LSTM,9,val_idx equals frozen split,True
+CNN_LSTM,9,y_true equals workbook label,True
+CNN_LSTM,9,y_pred is softmax argmax,True
+CNN_LSTM,9,CSV accuracy matches npz,True
+CNN_LSTM,9,CSV AUC matches npz,True
+CNN_LSTM,9,no child on both sides,True
+CNN_LSTM,10,val_idx equals frozen split,True
+CNN_LSTM,10,y_true equals workbook label,True
+CNN_LSTM,10,y_pred is softmax argmax,True
+CNN_LSTM,10,CSV accuracy matches npz,True
+CNN_LSTM,10,CSV AUC matches npz,True
+CNN_LSTM,10,no child on both sides,True
+CNN_LSTM,0,every clip scored exactly once,True

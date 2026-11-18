@@ -1,0 +1,23 @@
+\begin{table}[htbp]
+\centering
+\caption{Ablation study for the multi-cue model: cue contributions and fusion mechanism variants. All variants use the same ChildID-grouped 10-fold StratifiedGroupKFold splits and the same training protocol. Full multi-cue matches the Multi-cue result in Tables~1--11.}
+\label{tab:ablation}
+{\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Variant} & \textbf{Cues used} & \textbf{Fusion mechanism} & \textbf{Accuracy (\%) mean$\pm$SD} \\
+\midrule
+Motion-only (M)   & M & -- & $73.24\pm 3.91$ \\
+Facial-only (F)   & F & -- & $86.43\pm 3.44$ \\
+Gesture-only (G)  & G & -- & $96.02\pm 1.45$ \\
+\midrule
+Na{\"i}ve fusion (Concat) & M+F+G & Concat + MLP & $96.20\pm 1.32$ \\
+Cross-modal attention only & M+F+G & Attention (no gating) & $96.40\pm 1.10$ \\
+Gating only & M+F+G & Scalar gates (no attention) & $96.55\pm 1.10$ \\
+\textbf{Full multi-cue (Attention + Gating)} & \textbf{M+F+G} & \textbf{Attention + gating (final)} & \textbf{96.76$\pm$1.11} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
