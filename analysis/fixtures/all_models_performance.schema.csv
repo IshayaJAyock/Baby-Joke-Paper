@@ -1,0 +1,1 @@
+model,fold,validation_accuracy,auc_roc,train_loss,validation_loss,epoch_cap,epochs_ran,selection_epochs_ran,best_epoch,training_time,inference_ms_per_clip,inference_ms_per_clip_sd,n_correct,n_train,n_validation,n_train_children,n_validation_children,timestamp

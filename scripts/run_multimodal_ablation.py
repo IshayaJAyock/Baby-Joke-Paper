@@ -49,6 +49,7 @@ logging.basicConfig(
 logger = logging.getLogger("multicue_ablation")
 
 from models.multimodal import ABLATION_VARIANTS  # noqa: E402
+from config.config import set_random_seeds  # noqa: E402
 
 
 VARIANT_META = {
@@ -261,6 +262,7 @@ def run_one_variant(
 
 
 def main() -> None:
+    set_random_seeds()
     args = _parse_args()
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     for v in variants:
@@ -301,7 +303,37 @@ def main() -> None:
     summary = pd.DataFrame(rows)
     csv_path = out_dir / "ablation_summary.csv"
     summary.to_csv(csv_path, index=False)
+
+    # Manuscript-facing columns (same schema as analysis/fixtures/ablation_summary.schema.csv)
+    label = {
+        "cue_motion": ("Motion-only (M)", "M", "—"),
+        "cue_face": ("Facial-only (F)", "F", "—"),
+        "cue_hands": ("Gesture-only (G)", "G", "—"),
+        "concat": ("Naïve fusion (Concat)", "M+F+G", "Concat + MLP"),
+        "attention_only": ("Cross-modal attention only", "M+F+G", "Attention (no gating)"),
+        "gating_only": ("Gating only", "M+F+G", "Scalar gates (no attention)"),
+        "full": ("Full multi-cue (Attention + Gating)", "M+F+G", "Attention + gating (final)"),
+    }
+    pub_rows = []
+    for _, r in summary.iterrows():
+        v = r["variant"]
+        name, cues, fusion = label.get(v, (v, "?", "?"))
+        mean = r.get("mean_accuracy", float("nan"))
+        sd = r.get("sd_accuracy", float("nan"))
+        acc = f"{100*mean:.2f} ± {100*sd:.2f}" if pd.notna(mean) and pd.notna(sd) else "NA"
+        pub_rows.append({
+            "Variant": name,
+            "Cues used": cues,
+            "Fusion mechanism": fusion,
+            "Accuracy (%) mean±SD": acc,
+            "mean_accuracy": mean,
+            "sd_accuracy": sd,
+        })
+    pub = pd.DataFrame(pub_rows)
+    pub_path = out_dir / "T13_multicue_ablation.csv"
+    pub.to_csv(pub_path, index=False)
     logger.info(f"Ablation summary → {csv_path}")
+    logger.info(f"Table-13 schema → {pub_path}")
     print(summary.to_string(index=False))
 
 

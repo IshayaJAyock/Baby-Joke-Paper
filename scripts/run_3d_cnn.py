@@ -237,39 +237,25 @@ def process_videos_for_3d_cnn(video_paths: List[str], labels: List[int], config:
         logger.error(f"Video processing failed: {e}")
         raise
 
-def train_single_fold(X_train: np.ndarray, y_train: np.ndarray, 
-                     X_val: np.ndarray, y_val: np.ndarray, 
-                     fold_dir: Path, config: Dict[str, Any]) -> Dict[str, Any]:
-    """Train model for a single fold"""
+def train_single_fold(X_train, y_train, X_val, y_val, fold_dir, config, X_test=None, y_test=None):
+    """Train on fit set, monitor INNER val for callbacks, score OUTER test when provided."""
     try:
         from models.cnn_3d import CNN3D
-        
-        # Create model
         model = CNN3D(config)
-        
-        # Train model
         training_results = model.train(
-            X_train, y_train, X_val, y_val, fold_dir, 
-            epochs=config.get('num_epochs', 100)
+            X_train, y_train, X_val, y_val, fold_dir,
+            epochs=config.get('num_epochs', 100),
         )
-        
-        # Evaluate model
-        eval_results = model.evaluate(X_val, y_val)
-        
-        # Combine results
-        results = {
-            **training_results,
-            **eval_results
-        }
-        
-        # Clear model
+        eval_X = X_test if X_test is not None else X_val
+        eval_y = y_test if y_test is not None else y_val
+        eval_results = model.evaluate(eval_X, eval_y)
+        results = {**training_results, **eval_results}
         model.clear_session()
-        
         return results
-        
     except Exception as e:
         logger.error(f"Single fold training failed: {e}")
         raise
+
 
 def main():
     """Main function"""
@@ -280,7 +266,8 @@ def main():
         configure_tf_m3()
         
         # Load configuration from config file
-        from config.config import StandardConfig
+        from config.config import StandardConfig, set_random_seeds
+        set_random_seeds()
         std_config = StandardConfig()
         
         # Configuration

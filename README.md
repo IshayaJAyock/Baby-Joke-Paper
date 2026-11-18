@@ -1,4 +1,4 @@
-# A Multimodal Deep Learning Approach for Automated Analysis of Caregive-Child Interactions: A Comparative Study of Spatiotemporal Architectures.
+# BabyJoke video classification: comparative spatiotemporal architectures
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -16,26 +16,23 @@
 
 ## Overview
 
-This document presents a comprehensive deep learning framework for automated Baby joke classification in a short video, comparing four different neural network architectures `(Spatiotemporal)`: `CNN-LSTM`, `3D-CNN`, `Temporal Attention Network (TAN)`, and a `novel Multimodal` approach focusing on behavioral features. The framework processes 1,417 video samples across 5 joke types using a robust 10-fold cross-validation strategy.
+This repository compares four architectures for **five-class joke-type video classification** on BabyJoke clips: `CNN-LSTM`, `3D-CNN`, `Temporal Attention Network (TAN)`, and a multi-cue motion–face–gesture model. After dropping 13 duplicate `VideoID` rows, the evaluation cohort is **1,404 clips from 88 infants**.
 
-
-### Key Contributions
-- **Comparative Analysis**: Systematic evaluation of four different deep learning architectures
-- **Behavioral Focus**: Novel multimodal approach using motion, facial, and gesture features
-- **Robust Evaluation**: 10-fold stratified cross-validation with comprehensive metrics
-- **Production-Ready**: Optimized for MacBook M3 MPS with efficient memory management
+### Key contributions
+- Comparative evaluation of four spatiotemporal / multi-cue architectures
+- Multi-cue fusion with cross-modal attention, gating, and cue/fusion ablations
+- Nested **ChildID-grouped** 10-fold CV (`config/shared_fold_indices.json`, seed 3443)
+- Artifact layout compatible with `analysis/cross_validation_analysis.ipynb`
 
 ---
 
 ## Dataset Characteristics (BabyJoke)
 
 ### Video Dataset
-- **Total Valid Videos**: 1,417 samples
-- **Frame Sampling**: 20 frames per video (uniform temporal sampling)
-- **Resolution**: 224×224 pixels (standardized and based on the back born architecture)
-- **Duration**: Variable (uniformly sampled across temporal dimension)
-- **Formats**: MP4
-- **Quality**: High-definition video content
+- **Cohort after VideoID dedup**: 1,404 clips / 88 infants (13 duplicate VideoIDs dropped; see `config/cohort/`)
+- **Frame sampling (implemented)**: 20 frames per video via uniform `np.linspace` indices
+- **Resolution**: 224×224
+- **Formats**: MP4 under `data/videos/`
 
 ### Joke Type Classes (5 Classes) and Description
 
@@ -67,19 +64,12 @@ def sample_frames(video_path, max_frames=20, target_size=(224, 224)):
     # Extract and resize frames
 ```
 
-### 2. Data Augmentation
-- **Brightness Range**: $\pm$0.2
-- **Contrast Range**: (0.8, 1.2)
-- **Saturation Range**: (0.8, 1.2)
-- **Hue Range**: $\pm$0.1
-- **Horizontal Flip**: Enabled (50% probability)
-- **Rotation Range**: $\pm$15 degrees
-- **Augmentation Probability**: 0.5
+### 2. Augmentation (config defaults; main runners currently pass `augmented=False`)
+Config still lists brightness/contrast/flip options in `config/config.py`. The main `scripts/run_*.py` paths extract features with **augmentation off** unless you enable it explicitly.
 
 ### 3. Normalization
-- **Pixel Values**: Normalized to [0, 1] range
-- **Feature Scaling**: Standard normalization for extracted features
-- **Temporal Alignment**: Uniform sequence length (20 frames)
+- Pixel values scaled to [0, 1] where RGB volumes are used
+- Sequence length fixed at 20 frames
 
 ---
 
@@ -320,28 +310,8 @@ x = Bidirectional(LSTM(128, return_sequences=True))(x)
 x = LayerNormalization()(x)
 ```
 
-**B. Cross-Modal Fusion**
-```python
-def _build_cross_modal_fusion(self, motion_features, facial_features, gesture_features):
-    # Temporal pooling to fixed-size vectors
-    motion_vec = GlobalAveragePooling1D()(motion_features)
-    facial_vec = GlobalAveragePooling1D()(facial_features)
-    gesture_vec = GlobalAveragePooling1D()(gesture_features)
-    
-    # Concatenate pooled vectors
-    fused_vec = Concatenate()([motion_vec, facial_vec, gesture_vec])
-    
-    # Gating mechanism
-    gate = Dense(int(fused_vec.shape[-1]), activation='sigmoid')(fused_vec)
-    gated = Multiply()([fused_vec, gate])
-    
-    # Fusion projection
-    fused_features = Dense(256, activation='relu')(gated)
-    fused_features = BatchNormalization()(fused_features)
-    fused_features = Dropout(0.3)(fused_features)
-    
-    return tf.expand_dims(fused_features, axis=1)
-```
+**B. Cross-modal fusion (default = full)**
+Pairwise multi-head cross-attention among motion/face/hands, temporal pooling, concatenation, sigmoid gating, then projection. Ablation switches (`concat`, `attention_only`, `gating_only`, cue-alone) are selected via `--ablation` / `ablation_variant`.
 
 **C. Classification Head**
 ```python
@@ -375,13 +345,15 @@ python scripts/run_cnn_lstm.py
 python scripts/run_3d_cnn.py
 python scripts/run_tan.py
 python scripts/run_multimodal.py
+python scripts/run_multimodal_ablation.py
 ```
 
-Outputs are saved to `outputs/`:
-- Per-model folders: `CNN_LSTM/`, `3D_CNN/`, `TAN/`, `Multimodal/`
-- Global CSV: `outputs/all_models_performance.csv` (40 rows across 4 models × 10 folds)
+Outputs under `outputs/` (gitignored) follow the analysis schema:
+- `shared_fold_indices.json` (installed from `config/shared_fold_indices.json`)
+- `all_models_performance.csv`
+- `multi-cue|3d_cnn|tan|cnn_lstm/fold_*_predictions.npz`
 
-Note: `data/` is git-ignored. Place your videos in `data/videos/` and ensure metadata path in `config/config.py`.
+Note: `data/` is git-ignored. Place videos in `data/videos/` and set the metadata path in `config/config.py`.
 
 ---
 
@@ -406,10 +378,11 @@ README.md                # This document
 
 ## Reproducibility
 
-- Cross-validation: Stratified 10-fold; predictions aggregated across folds produce a full-dataset confusion matrix (each sample is predicted exactly once as part of its validation fold).
-- Seeds: numpy=44342, tensorflow=4254, python=4422, sklearn=42, cv_random_state=3443.
-- Label smoothing: ε = 0.05; Optimizer: Adam(lr=5e-4, β1=0.9, β2=0.999, ε=1e-7, clipnorm=1.0).
-- Scheduler: ReduceLROnPlateau(factor=0.5, patience=8, min_lr=1e-7); Early stopping: patience=25.
+- Cross-validation: nested ChildID `StratifiedGroupKFold` (outer test untouched; inner monitor for early stopping / LR schedule). Frozen splits: `config/shared_fold_indices.json`.
+- Metrics: macro-averaged precision/recall/F1 are primary; weighted counterparts are also stored.
+- Seeds: numpy=44342, tensorflow=4254, python=4422, sklearn=42, cv_random_state=3443 (initialized in each `scripts/run_*.py`).
+- Optimizer: Adam(lr=5e-4, β1=0.9, β2=0.999, ε=1e-7, clipnorm=1.0); label smoothing ε=0.05 where configured.
+- Scheduler: ReduceLROnPlateau(factor=0.5, patience=8, min_lr=1e-7) on **inner** val loss; EarlyStopping patience=15 on **inner** val accuracy.
 
 ---
 

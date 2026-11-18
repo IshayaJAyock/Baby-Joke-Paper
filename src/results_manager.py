@@ -47,11 +47,13 @@ class ResultsManager:
         self._initialize_main_csv()
         
         # Model name to folder mapping (matching outputs/ structure)
+        # On-disk folders match analysis notebook (model_name.lower()).
         self.model_folder_mapping = {
-            'CNN_LSTM': 'CNN_LSTM',
-            'TAN': 'TAN',  
-            'Multimodal': 'Multimodal',
-            '3D_CNN': '3D_CNN'
+            'CNN_LSTM': 'cnn_lstm',
+            'TAN': 'tan',
+            'Multimodal': 'multi-cue',
+            'Multi-cue': 'multi-cue',
+            '3D_CNN': '3d_cnn',
         }
     
     def _initialize_main_csv(self):

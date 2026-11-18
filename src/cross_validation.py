@@ -2,376 +2,461 @@
 Pure TensorFlow/Keras Cross-Validation Framework
 ==============================================
 
-This module provides a pure TensorFlow/Keras cross-validation framework optimized for MacBook M3 MPS.
-No multiprocessing, no threading - just pure TensorFlow operations.
+ChildID-grouped nested evaluation:
 
-Author: Ishaya, Jeremiah Ayock
-Date: 2025
+1. Outer ``StratifiedGroupKFold`` (frozen ``config/shared_fold_indices.json`` when present)
+   holds out validation infants for **final scoring only**.
+2. Inner ``GroupShuffleSplit`` on the outer-train infants supplies the callback /
+   ``ReduceLROnPlateau`` / early-stopping monitor set.
+3. Outer test infants are never passed as ``validation_data``.
+
+Artifacts match ``analysis/cross_validation_analysis.ipynb``.
 """
 
-import os
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report, roc_auc_score
-)
-import logging
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any, Callable
-import warnings
-import time
-from .results_manager import ResultsManager
-import json
+from __future__ import annotations
 
-# Suppress all warnings
-warnings.filterwarnings('ignore')
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import json
+import logging
+import os
+import time
+import warnings
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+import tensorflow as tf
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold, StratifiedKFold
+
+from .artifact_io import (
+    append_performance_row,
+    canonical_model_name,
+    ensure_shared_folds,
+    load_shared_folds,
+    save_fold_predictions,
+    write_fold_indices_sidecar,
+)
+from .results_manager import ResultsManager
+
+warnings.filterwarnings("ignore")
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 logger = logging.getLogger(__name__)
 
+
+def _index_data(X: Any, idx: np.ndarray, multimodal: bool):
+    if multimodal:
+        return [modality[idx] for modality in X]
+    return X[idx]
+
+
+def _inner_child_split(
+    y_train: np.ndarray,
+    groups_train: np.ndarray,
+    fold_id: int,
+    random_state: int,
+    test_size: float = 0.18,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Split outer-train into fit / monitor with no ChildID overlap."""
+    for attempt in range(40):
+        splitter = GroupShuffleSplit(
+            n_splits=1,
+            test_size=test_size,
+            random_state=random_state + fold_id * 100 + attempt,
+        )
+        fit_rel, mon_rel = next(splitter.split(np.zeros(len(y_train)), y_train, groups_train))
+        fit_rel = np.asarray(fit_rel, dtype=np.int64)
+        mon_rel = np.asarray(mon_rel, dtype=np.int64)
+        if (
+            len(np.unique(y_train[fit_rel])) == len(np.unique(y_train))
+            and len(np.unique(y_train[mon_rel])) == len(np.unique(y_train))
+            and not (set(groups_train[fit_rel]) & set(groups_train[mon_rel]))
+        ):
+            return fit_rel, mon_rel
+    raise RuntimeError(f"Inner ChildID split failed for fold {fold_id}")
+
+
 class PureTFCrossValidation:
-    """Pure TensorFlow/Keras cross-validation framework"""
-    
+    """Pure TensorFlow/Keras nested ChildID cross-validation."""
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.n_splits = config.get('n_splits', 10)
-        self.random_state = config.get('random_state', 42)
-        self.results_dir = Path(config.get('results_dir', 'results'))
+        self.n_splits = config.get("n_splits", 10)
+        self.random_state = config.get("random_state", 42)
+        self.results_dir = Path(config.get("results_dir", "outputs"))
         self.results_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize results manager
         self.results_manager = ResultsManager(str(self.results_dir))
-        
-        # Configure TensorFlow for M3 MPS
         self._configure_tf_m3()
-        
+
     def _configure_tf_m3(self):
-        """Configure TensorFlow for optimal M3 MPS performance"""
         try:
-            # Configure TensorFlow for M3 MPS
             tf.config.optimizer.set_jit(True)
-            
-            # Only configure threading if not already initialized
             try:
                 tf.config.threading.set_inter_op_parallelism_threads(0)
                 tf.config.threading.set_intra_op_parallelism_threads(0)
             except RuntimeError:
-                # Already initialized, skip threading config
                 pass
-            
-            # Configure memory growth
-            gpus = tf.config.list_physical_devices('GPU')
+            gpus = tf.config.list_physical_devices("GPU")
             if gpus:
                 try:
                     for gpu in gpus:
                         tf.config.experimental.set_memory_growth(gpu, True)
-                    logger.info("GPU memory growth enabled")
                 except RuntimeError as e:
                     logger.warning(f"GPU memory growth failed: {e}")
-            
-            # Set mixed precision policy
-            tf.keras.mixed_precision.set_global_policy('mixed_float16')
+            tf.keras.mixed_precision.set_global_policy("mixed_float16")
             logger.info("TensorFlow configured for M3 MPS")
-            
         except Exception as e:
             logger.warning(f"TensorFlow configuration failed: {e}")
-    
-    def run_cross_validation(self, model_name: str, model_trainer: Callable, 
-                           X: Any, y: np.ndarray, 
-                           config: Dict[str, Any],
-                           groups: Optional[np.ndarray] = None) -> Dict[str, Any]:
-        """Run cross-validation.
 
-        Infant / dyad hold-out (default when ``groups`` is provided or
-        ``config['use_group_cv']`` is True): ``StratifiedGroupKFold`` on
-        ``ChildID``. Clip-wise ``StratifiedKFold`` is retained only if
-        ``use_group_cv`` is explicitly False *and* groups are omitted.
-        """
+    def _resolve_outer_folds(
+        self, y: np.ndarray, groups: Optional[np.ndarray], n_samples: int
+    ) -> List[Dict[str, Any]]:
+        """Prefer frozen shared folds; else build StratifiedGroupKFold."""
+        frozen_src = Path(self.config.get("shared_folds_path", "config/shared_fold_indices.json"))
+        use_frozen = bool(self.config.get("use_frozen_folds", True))
+        shared_path = ensure_shared_folds(self.results_dir, frozen_src if frozen_src.exists() else None)
+
+        if use_frozen and shared_path.exists():
+            shared = load_shared_folds(shared_path)
+            if int(shared.get("n_rows", -1)) == n_samples and int(shared.get("n_splits", -1)) == self.n_splits:
+                logger.info(f"Using frozen ChildID folds from {shared_path}")
+                return list(shared["folds"])
+            logger.warning(
+                f"Frozen folds n_rows={shared.get('n_rows')} / n_splits={shared.get('n_splits')} "
+                f"do not match current data ({n_samples}, {self.n_splits}); regenerating."
+            )
+
+        use_group_cv = bool(self.config.get("use_group_cv", True))
+        if use_group_cv:
+            if groups is None:
+                raise ValueError("use_group_cv=True requires groups (ChildID)")
+            kfold = StratifiedGroupKFold(
+                n_splits=self.n_splits, shuffle=True, random_state=self.random_state
+            )
+            split_iter = kfold.split(np.zeros(n_samples), y, groups)
+        else:
+            kfold = StratifiedKFold(
+                n_splits=self.n_splits, shuffle=True, random_state=self.random_state
+            )
+            split_iter = kfold.split(np.zeros(n_samples), y)
+
+        folds = []
+        for fold_i, (train_idx, val_idx) in enumerate(split_iter, start=1):
+            folds.append(
+                {
+                    "fold": fold_i,
+                    "train_idx": train_idx.tolist(),
+                    "val_idx": val_idx.tolist(),
+                }
+            )
+        payload = {
+            "split": "StratifiedGroupKFold" if use_group_cv else "StratifiedKFold",
+            "group_column": "ChildID",
+            "n_splits": self.n_splits,
+            "shuffle": True,
+            "random_state": self.random_state,
+            "n_rows": n_samples,
+            "epoch_cap": int(self.config.get("num_epochs", 150)),
+            "early_stopping": "nested_on_training_children_then_refit",
+            "start_from_epoch": int(self.config.get("early_stopping_start_epoch", 15)),
+            "folds": folds,
+        }
+        out = self.results_dir / "shared_fold_indices.json"
+        out.write_text(json.dumps(payload, indent=2))
+        logger.info(f"Wrote regenerated shared folds → {out}")
+        return folds
+
+    def run_cross_validation(
+        self,
+        model_name: str,
+        model_trainer: Callable,
+        X: Any,
+        y: np.ndarray,
+        config: Dict[str, Any],
+        groups: Optional[np.ndarray] = None,
+    ) -> Dict[str, Any]:
         try:
-            logger.info(f"Starting {self.n_splits}-fold cross-validation for {model_name}")
-            
-            # Support multimodal inputs: X can be a list/tuple of modality arrays
+            display_name = canonical_model_name(model_name)
+            logger.info(f"Starting nested {self.n_splits}-fold CV for {display_name}")
+
             is_multimodal = isinstance(X, (list, tuple))
             if is_multimodal:
                 if len(X) == 0:
                     raise ValueError("Received empty modalities list for X")
-                # Validate that all modalities have the same number of samples and match y
-                num_samples_per_modality = [len(modality) for modality in X]
-                if len(set(num_samples_per_modality)) != 1:
-                    raise ValueError(f"All modalities must have the same number of samples, got: {num_samples_per_modality}")
-                n_samples = num_samples_per_modality[0]
+                n_mods = [len(m) for m in X]
+                if len(set(n_mods)) != 1:
+                    raise ValueError(f"All modalities must have same length, got {n_mods}")
+                n_samples = n_mods[0]
             else:
-                # Assume X is a single array-like with length equal to y
-                try:
-                    n_samples = len(X)
-                except Exception:
-                    n_samples = len(y)
-            
-            if n_samples != len(y):
-                raise ValueError(f"Number of samples in X ({n_samples}) and y ({len(y)}) must match")
+                n_samples = len(X)
 
-            use_group_cv = bool(config.get('use_group_cv', True))
+            if n_samples != len(y):
+                raise ValueError(f"X ({n_samples}) and y ({len(y)}) length mismatch")
+
             if groups is not None:
                 groups = np.asarray(groups)
                 if len(groups) != n_samples:
-                    raise ValueError(
-                        f"groups length ({len(groups)}) must match n_samples ({n_samples})"
-                    )
+                    raise ValueError(f"groups length {len(groups)} != n_samples {n_samples}")
 
-            if use_group_cv:
-                if groups is None:
-                    raise ValueError(
-                        "use_group_cv=True requires `groups` (e.g. ChildID) so that "
-                        "no infant appears in both train and validation."
-                    )
-                kfold = StratifiedGroupKFold(
-                    n_splits=self.n_splits, shuffle=True, random_state=self.random_state
-                )
-                split_iter = kfold.split(np.zeros(n_samples), y, groups)
-                logger.info(
-                    "Using StratifiedGroupKFold on groups "
-                    f"(n_groups={len(np.unique(groups))}, seed={self.random_state})"
-                )
-            else:
-                kfold = StratifiedKFold(
-                    n_splits=self.n_splits, shuffle=True, random_state=self.random_state
-                )
-                split_iter = kfold.split(np.zeros(n_samples), y)
-                logger.warning(
-                    "Using clip-wise StratifiedKFold (use_group_cv=False); "
-                    "infant identity can leak between train and validation."
-                )
-            
-            # Store results
-            fold_results = []
-            all_predictions = []
-            all_true_labels = []
-            
-            # Run cross-validation
-            for fold, (train_idx, val_idx) in enumerate(split_iter):
+            folds = self._resolve_outer_folds(y, groups, n_samples)
+            write_fold_indices_sidecar(self.results_dir, display_name, folds)
+
+            fold_results: List[Dict[str, Any]] = []
+            all_predictions: List[Any] = []
+            all_true_labels: List[Any] = []
+
+            for fold_meta in folds:
+                fold = int(fold_meta["fold"])
+                train_idx = np.asarray(fold_meta["train_idx"], dtype=np.int64)
+                test_idx = np.asarray(fold_meta["val_idx"], dtype=np.int64)  # outer test
                 try:
-                    logger.info(f"Processing fold {fold + 1}/{self.n_splits}")
-                    
-                    # Split data
-                    if is_multimodal:
-                        X_train = [modality[train_idx] for modality in X]
-                        X_val = [modality[val_idx] for modality in X]
-                    else:
-                        X_train, X_val = X[train_idx], X[val_idx]
-                    y_train, y_val = y[train_idx], y[val_idx]
-                    
-                    # Train model (no fold directory creation)
-                    fold_start_time = time.time()
-                    # Compute per-fold class weights to tackle imbalance
+                    logger.info(f"Processing fold {fold}/{self.n_splits}")
+
+                    y_train_outer = y[train_idx]
+                    if groups is None:
+                        raise ValueError("Nested ChildID CV requires groups")
+                    groups_train = groups[train_idx]
+                    fit_rel, mon_rel = _inner_child_split(
+                        y_train_outer, groups_train, fold, self.random_state
+                    )
+                    fit_idx = train_idx[fit_rel]
+                    mon_idx = train_idx[mon_rel]
+
+                    X_fit = _index_data(X, fit_idx, is_multimodal)
+                    X_mon = _index_data(X, mon_idx, is_multimodal)
+                    X_test = _index_data(X, test_idx, is_multimodal)
+                    y_fit, y_mon, y_test = y[fit_idx], y[mon_idx], y[test_idx]
+
                     try:
                         from sklearn.utils.class_weight import compute_class_weight
-                        classes = np.unique(y_train)
-                        class_weights_arr = compute_class_weight('balanced', classes=classes, y=y_train)
-                        class_weight = {int(c): float(w) for c, w in zip(classes, class_weights_arr)}
+
+                        classes = np.unique(y_fit)
+                        cw = compute_class_weight("balanced", classes=classes, y=y_fit)
+                        class_weight = {int(c): float(w) for c, w in zip(classes, cw)}
                     except Exception:
                         class_weight = None
-                    
-                    fold_results_dict = model_trainer(
-                        X_train, y_train, X_val, y_val, None, {**config, 'class_weight': class_weight}
+
+                    fold_dir = self.results_dir / "checkpoints" / model_folder_safe(display_name) / f"fold_{fold}"
+                    fold_dir.mkdir(parents=True, exist_ok=True)
+
+                    fold_cfg = {
+                        **config,
+                        "class_weight": class_weight,
+                        "fold": fold,
+                        "outer_test_idx": test_idx,
+                    }
+
+                    t0 = time.time()
+                    # Train/monitor on inner split; score on untouched outer test.
+                    fold_out = model_trainer(
+                        X_fit,
+                        y_fit,
+                        X_mon,
+                        y_mon,
+                        fold_dir,
+                        fold_cfg,
+                        X_test=X_test,
+                        y_test=y_test,
                     )
-                    fold_time = time.time() - fold_start_time
-                    
-                    # Add fold information
-                    fold_results_dict['fold'] = fold + 1
-                    fold_results_dict['fold_time'] = fold_time
-                    # Record sizes (use first modality when multimodal)
-                    fold_results_dict['train_size'] = len(X_train[0]) if is_multimodal else len(X_train)
-                    fold_results_dict['val_size'] = len(X_val[0]) if is_multimodal else len(X_val)
-                    
-                    # Store predictions
-                    if 'y_pred' in fold_results_dict:
-                        all_predictions.extend(fold_results_dict['y_pred'])
-                        all_true_labels.extend(y_val)
-                    
-                    # Add true labels and predictions to results for kappa calculation
-                    fold_results_dict['y_true'] = y_val
-                    if 'y_pred' not in fold_results_dict:
-                        # If predictions not in results, add them
-                        fold_results_dict['y_pred'] = fold_results_dict.get('y_pred', [])
-                    
-                    # Add to results manager
-                    self.results_manager.add_fold_result(model_name, fold + 1, fold_results_dict)
-                    
-                    fold_results.append(fold_results_dict)
-                    
-                    logger.info(f"Fold {fold + 1} completed in {fold_time:.2f}s")
-                    
-                    # Clear TensorFlow session after each fold
+                    fold_time = time.time() - t0
+
+                    y_pred = np.asarray(fold_out.get("y_pred", []))
+                    y_true = np.asarray(fold_out.get("y_true", y_test))
+                    y_proba = fold_out.get("y_proba")
+                    if y_proba is None:
+                        raise RuntimeError(
+                            f"{display_name} fold {fold}: trainer must return y_proba "
+                            "(softmax) for artifact export"
+                        )
+                    y_proba = np.asarray(y_proba)
+
+                    acc = float(fold_out.get("accuracy", np.mean(y_pred == y_true) if len(y_pred) else 0.0))
+                    n_correct = int((y_pred == y_true).sum()) if len(y_pred) else 0
+
+                    save_fold_predictions(
+                        self.results_dir,
+                        display_name,
+                        fold,
+                        y_true=y_true,
+                        y_pred=y_pred,
+                        y_proba=y_proba,
+                        val_idx=test_idx,
+                    )
+
+                    best_epoch = int(fold_out.get("best_epoch", fold_out.get("epochs_ran", 0) or 0))
+                    epochs_ran = int(fold_out.get("epochs_ran", best_epoch))
+                    append_performance_row(
+                        self.results_dir,
+                        {
+                            "model": display_name,
+                            "fold": fold,
+                            "validation_accuracy": acc,
+                            "auc_roc": fold_out.get("auc_roc", np.nan),
+                            "train_loss": fold_out.get("train_loss", np.nan),
+                            "validation_loss": fold_out.get("validation_loss", np.nan),
+                            "epoch_cap": int(config.get("num_epochs", 150)),
+                            "epochs_ran": epochs_ran,
+                            "selection_epochs_ran": epochs_ran,
+                            "best_epoch": best_epoch,
+                            "training_time": float(fold_out.get("training_time", fold_time)),
+                            "inference_ms_per_clip": fold_out.get("inference_ms_per_clip", np.nan),
+                            "inference_ms_per_clip_sd": fold_out.get("inference_ms_per_clip_sd", np.nan),
+                            "n_correct": n_correct,
+                            "n_train": int(len(fit_idx)),
+                            "n_validation": int(len(test_idx)),
+                            "n_train_children": int(len(np.unique(groups[fit_idx]))),
+                            "n_validation_children": int(len(np.unique(groups[test_idx]))),
+                        },
+                    )
+
+                    fold_out["fold"] = fold
+                    fold_out["fold_time"] = fold_time
+                    fold_out["train_size"] = len(fit_idx)
+                    fold_out["val_size"] = len(test_idx)
+                    fold_out["monitor_size"] = len(mon_idx)
+                    fold_out["validation_accuracy"] = acc
+                    fold_out["y_true"] = y_true
+                    fold_out["y_pred"] = y_pred
+
+                    self.results_manager.add_fold_result(display_name, fold, fold_out)
+                    fold_results.append(fold_out)
+                    all_predictions.extend(list(y_pred))
+                    all_true_labels.extend(list(y_true))
+                    logger.info(f"Fold {fold} done in {fold_time:.1f}s acc={acc:.4f}")
                     tf.keras.backend.clear_session()
-                    
                 except Exception as e:
-                    logger.error(f"Fold {fold + 1} failed: {e}")
-                    continue
-            
-            # Calculate overall metrics
-            overall_metrics = self._calculate_overall_metrics(fold_results, all_predictions, all_true_labels)
-            
-            # Save results
+                    logger.error(f"Fold {fold} failed: {e}")
+                    raise
+
+            overall_metrics = self._calculate_overall_metrics(
+                fold_results, all_predictions, all_true_labels
+            )
             results = {
-                'model_name': model_name,
-                'n_splits': self.n_splits,
-                'fold_results': fold_results,
-                'overall_metrics': overall_metrics,
-                'config': config
+                "model_name": display_name,
+                "n_splits": self.n_splits,
+                "fold_results": fold_results,
+                "overall_metrics": overall_metrics,
+                "config": config,
+                "protocol": "nested_childid_grouped",
             }
-            
-            # Save to file
-            results_file = self.results_dir / f"{model_name}_cv_results.json"
+            results_file = self.results_dir / f"{display_name}_cv_results.json"
             self._save_results(results, results_file)
-            
-            # Save model-specific results (use real class names; don't create per-model CSV copies)
+
             if all_predictions and all_true_labels:
                 try:
                     from config.config import JOKE_TYPE_NAMES
+
                     class_names = JOKE_TYPE_NAMES
                 except Exception:
                     class_names = [f"Class_{i}" for i in range(len(np.unique(all_true_labels)))]
                 self.results_manager.save_model_classification_report(
-                    model_name, np.array(all_true_labels), np.array(all_predictions), class_names
+                    display_name, np.array(all_true_labels), np.array(all_predictions), class_names
                 )
                 self.results_manager.save_model_confusion_matrix(
-                    model_name, np.array(all_true_labels), np.array(all_predictions), class_names
+                    display_name, np.array(all_true_labels), np.array(all_predictions), class_names
                 )
-            
-            logger.info(f"Cross-validation completed for {model_name}")
+
+            logger.info(f"Cross-validation completed for {display_name}")
             return results
-            
         except Exception as e:
             logger.error(f"Cross-validation failed: {e}")
             raise
-    
-    def _calculate_overall_metrics(self, fold_results: List[Dict], 
-                                 all_predictions: List, all_true_labels: List) -> Dict[str, Any]:
-        """Calculate overall metrics across all folds"""
+
+    def _calculate_overall_metrics(
+        self, fold_results: List[Dict], all_predictions: List, all_true_labels: List
+    ) -> Dict[str, Any]:
         try:
             if not fold_results:
                 return {}
-            
-            # Calculate mean and std for each metric
-            metrics = ['accuracy', 'precision', 'recall', 'f1_score']
-            overall_metrics = {}
-            
+            metrics = ["accuracy", "precision", "recall", "f1_score"]
+            overall: Dict[str, Any] = {}
             for metric in metrics:
                 values = [fold.get(metric, 0) for fold in fold_results if metric in fold]
                 if values:
-                    overall_metrics[f'{metric}_mean'] = np.mean(values)
-                    overall_metrics[f'{metric}_std'] = np.std(values)
-                    overall_metrics[f'{metric}_min'] = np.min(values)
-                    overall_metrics[f'{metric}_max'] = np.max(values)
-            
-            # Calculate overall confusion matrix
+                    overall[f"{metric}_mean"] = float(np.mean(values))
+                    overall[f"{metric}_std"] = float(np.std(values))
+                    overall[f"{metric}_min"] = float(np.min(values))
+                    overall[f"{metric}_max"] = float(np.max(values))
             if all_predictions and all_true_labels:
-                cm = confusion_matrix(all_true_labels, all_predictions)
-                overall_metrics['confusion_matrix'] = cm.tolist()
-                
-                # Calculate overall classification report
-                report = classification_report(all_true_labels, all_predictions, output_dict=True)
-                overall_metrics['classification_report'] = report
-            
-            # Calculate training times
-            training_times = [fold.get('training_time', 0) for fold in fold_results if 'training_time' in fold]
-            if training_times:
-                overall_metrics['total_training_time'] = np.sum(training_times)
-                overall_metrics['avg_training_time'] = np.mean(training_times)
-                overall_metrics['std_training_time'] = np.std(training_times)
-            
-            return overall_metrics
-            
+                overall["confusion_matrix"] = confusion_matrix(
+                    all_true_labels, all_predictions
+                ).tolist()
+                overall["classification_report"] = classification_report(
+                    all_true_labels, all_predictions, output_dict=True, zero_division=0
+                )
+            times = [fold.get("training_time", 0) for fold in fold_results if "training_time" in fold]
+            if times:
+                overall["total_training_time"] = float(np.sum(times))
+                overall["avg_training_time"] = float(np.mean(times))
+                overall["std_training_time"] = float(np.std(times))
+            return overall
         except Exception as e:
             logger.warning(f"Overall metrics calculation failed: {e}")
             return {}
-    
+
     def _save_results(self, results: Dict[str, Any], results_file: Path):
-        """Save results to file"""
         try:
-            # Convert numpy arrays to lists for JSON serialization
+
             def convert_numpy(obj):
                 if isinstance(obj, np.ndarray):
                     return obj.tolist()
-                elif isinstance(obj, np.integer):
+                if isinstance(obj, np.integer):
                     return int(obj)
-                elif isinstance(obj, np.floating):
+                if isinstance(obj, np.floating):
                     return float(obj)
-                elif isinstance(obj, dict):
-                    return {key: convert_numpy(value) for key, value in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_numpy(item) for item in obj]
-                else:
-                    return obj
-            
-            # Convert results
-            results_serializable = convert_numpy(results)
-            
-            # Save to JSON
-            with open(results_file, 'w') as f:
-                json.dump(results_serializable, f, indent=2)
-            
+                if isinstance(obj, dict):
+                    return {k: convert_numpy(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [convert_numpy(i) for i in obj]
+                return obj
+
+            with open(results_file, "w") as f:
+                json.dump(convert_numpy(results), f, indent=2)
             logger.info(f"Results saved to: {results_file}")
-            
         except Exception as e:
             logger.warning(f"Results saving failed: {e}")
-    
+
     def create_summary_report(self, results: Dict[str, Any]) -> str:
-        """Create a summary report"""
         try:
-            report = []
-            report.append("=" * 60)
-            report.append(f"CROSS-VALIDATION RESULTS: {results['model_name']}")
-            report.append("=" * 60)
-            report.append(f"Number of folds: {results['n_splits']}")
-            report.append("")
-            
-            # Overall metrics
-            overall_metrics = results.get('overall_metrics', {})
-            if overall_metrics:
-                report.append("OVERALL METRICS:")
-                report.append("-" * 20)
-                
-                metrics = ['accuracy', 'precision', 'recall', 'f1_score']
-                for metric in metrics:
-                    mean_key = f'{metric}_mean'
-                    std_key = f'{metric}_std'
-                    if mean_key in overall_metrics and std_key in overall_metrics:
-                        report.append(f"{metric.capitalize()}: {overall_metrics[mean_key]:.4f} ± {overall_metrics[std_key]:.4f}")
-                
-                # Training time
-                if 'total_training_time' in overall_metrics:
-                    report.append(f"Total training time: {overall_metrics['total_training_time']:.2f}s")
-                    report.append(f"Average training time: {overall_metrics['avg_training_time']:.2f}s")
-            
-            report.append("")
-            report.append("FOLD DETAILS:")
-            report.append("-" * 20)
-            
-            # Individual fold results
-            fold_results = results.get('fold_results', [])
-            for i, fold in enumerate(fold_results):
-                report.append(f"Fold {i + 1}:")
-                report.append(f"  Accuracy: {fold.get('accuracy', 0):.4f}")
-                report.append(f"  Precision: {fold.get('precision', 0):.4f}")
-                report.append(f"  Recall: {fold.get('recall', 0):.4f}")
-                report.append(f"  F1-Score: {fold.get('f1_score', 0):.4f}")
-                report.append(f"  Training time: {fold.get('training_time', 0):.2f}s")
-                report.append("")
-            
-            return "\n".join(report)
-            
+            lines = [
+                "=" * 60,
+                f"CROSS-VALIDATION RESULTS: {results['model_name']}",
+                "=" * 60,
+                f"Protocol: {results.get('protocol', 'nested_childid_grouped')}",
+                f"Number of folds: {results['n_splits']}",
+                "",
+            ]
+            overall = results.get("overall_metrics", {})
+            if overall:
+                lines.append("OVERALL METRICS:")
+                lines.append("-" * 20)
+                for metric in ["accuracy", "precision", "recall", "f1_score"]:
+                    mean_key, std_key = f"{metric}_mean", f"{metric}_std"
+                    if mean_key in overall and std_key in overall:
+                        lines.append(
+                            f"{metric.capitalize()}: {overall[mean_key]:.4f} ± {overall[std_key]:.4f}"
+                        )
+            lines.append("")
+            lines.append("FOLD DETAILS:")
+            lines.append("-" * 20)
+            for fold in results.get("fold_results", []):
+                lines.append(
+                    f"Fold {fold.get('fold')}: acc={fold.get('accuracy', fold.get('validation_accuracy', 0)):.4f} "
+                    f"macro-F1={fold.get('f1_score', 0):.4f} time={fold.get('training_time', 0):.1f}s"
+                )
+            return "\n".join(lines)
         except Exception as e:
             logger.warning(f"Summary report creation failed: {e}")
             return "Summary report not available"
-    
+
     def clear_session(self):
-        """Clear TensorFlow session"""
         try:
             tf.keras.backend.clear_session()
-            logger.info("TensorFlow session cleared")
         except Exception as e:
             logger.warning(f"Session clearing failed: {e}")
+
+
+def model_folder_safe(name: str) -> str:
+    from .artifact_io import model_folder
+
+    return model_folder(name)

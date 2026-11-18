@@ -378,45 +378,42 @@ class Multimodal:
         return outputs
     
     def _create_callbacks(self, model_dir: Optional[Path]) -> List[tf.keras.callbacks.Callback]:
-        """Create training callbacks"""
+        """Create training callbacks (early stopping always on; monitors INNER val only)."""
         try:
             callbacks = []
-            
+            patience = int(self.config.get('early_stopping_patience', 15))
+
+            early_stopping = EarlyStopping(
+                monitor='val_accuracy',
+                patience=patience,
+                restore_best_weights=True,
+                verbose=1,
+            )
+            callbacks.append(early_stopping)
+
             if model_dir:
-                # Early stopping with patience
-                early_stopping = EarlyStopping(
-                    monitor='val_accuracy',
-                    patience=15,
-                    restore_best_weights=True,
-                    verbose=1
-                )
-                callbacks.append(early_stopping)
-                
-                # Model checkpoint
+                Path(model_dir).mkdir(parents=True, exist_ok=True)
                 checkpoint = ModelCheckpoint(
-                    filepath=model_dir / 'best_model.keras',
+                    filepath=str(Path(model_dir) / 'best_model.keras'),
                     monitor='val_accuracy',
                     save_best_only=True,
-                    verbose=1
+                    verbose=1,
                 )
                 callbacks.append(checkpoint)
-            
-            # Learning rate reduction
+
             lr_scheduler = ReduceLROnPlateau(
                 monitor='val_loss',
-                factor=0.5,
-                patience=8,
-                min_lr=1e-7,
-                verbose=1
+                factor=float(self.config.get('reduce_lr_factor', 0.5)),
+                patience=int(self.config.get('reduce_lr_patience', 8)),
+                min_lr=float(self.config.get('min_learning_rate', 1e-7)),
+                verbose=1,
             )
             callbacks.append(lr_scheduler)
-            
-            
             return callbacks
-            
         except Exception as e:
             logger.warning(f"Callback creation failed: {e}")
             return []
+
     
     @staticmethod
     def select_inputs_for_variant(X: Any, variant: str) -> Any:
@@ -472,7 +469,10 @@ class Multimodal:
             return {
                 'history': history.history,
                 'training_time': training_time,
-                'best_epoch': len(history.history['loss']),
+                'best_epoch': int(np.argmax(history.history.get('val_accuracy', history.history['loss'])) + 1) if history.history.get('val_accuracy') else len(history.history['loss']),
+                'epochs_ran': len(history.history['loss']),
+                'train_loss': float(history.history['loss'][-1]),
+                'validation_loss': float(history.history['val_loss'][-1]) if 'val_loss' in history.history else None,
                 'final_model_path': str(final_model_path) if final_model_path else None
             }
             
@@ -481,40 +481,31 @@ class Multimodal:
             raise
     
     def evaluate(self, X_test: List[np.ndarray], y_test: np.ndarray) -> Dict[str, Any]:
-        """Evaluate the model"""
+        """Evaluate on an untouched outer test fold; report macro + weighted metrics."""
         try:
+            from src.eval_metrics import classification_metrics
+
             X_test = self.select_inputs_for_variant(X_test, self.ablation_variant)
             y_test_cat = to_categorical(y_test, num_classes=self.num_classes)
-            
-            # Evaluate model
             test_loss, test_accuracy, test_top3_accuracy = self.model.evaluate(
                 X_test, y_test_cat, verbose=0
             )
-            
-            # Get predictions
-            y_pred = self.model.predict(X_test, verbose=0)
-            y_pred_classes = np.argmax(y_pred, axis=1)
-            
-            # Calculate additional metrics
-            from sklearn.metrics import precision_score, recall_score, f1_score
-            
-            precision = precision_score(y_test, y_pred_classes, average='weighted')
-            recall = recall_score(y_test, y_pred_classes, average='weighted')
-            f1 = f1_score(y_test, y_pred_classes, average='weighted')
-            
+            y_proba = self.model.predict(X_test, verbose=0)
+            y_pred_classes = np.argmax(y_proba, axis=1)
+            metrics = classification_metrics(y_test, y_pred_classes, y_proba)
             return {
-                'accuracy': test_accuracy,
-                'top3_accuracy': test_top3_accuracy,
-                'precision': precision,
-                'recall': recall,
-                'f1_score': f1,
+                'accuracy': float(test_accuracy),
+                'top3_accuracy': float(test_top3_accuracy),
+                'validation_loss': float(test_loss),
+                **metrics,
                 'y_pred': y_pred_classes,
-                'y_true': y_test
+                'y_true': y_test,
+                'y_proba': y_proba,
             }
-            
         except Exception as e:
             logger.error(f"Evaluation failed: {e}")
             raise
+
     
     def clear_session(self):
         """Clear TensorFlow session"""
