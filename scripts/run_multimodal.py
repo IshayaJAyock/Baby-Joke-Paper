@@ -435,81 +435,75 @@ def sample_frames(video_path: str, max_frames: int, target_size: tuple = (224, 2
         logger.error(f"Error sampling frames from {video_path}: {str(e)}")
         return None
 
-def process_multimodal_data(video_paths: List[str], labels: List[int], config: Dict[str, Any]) -> Tuple[List[np.ndarray], np.ndarray]:
-    """Process data for multimodal model using motion, facial, and gesture features"""
+def process_multimodal_data(
+    video_paths: List[str],
+    labels: List[int],
+    config: Dict[str, Any],
+) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
+    """Extract real motion/face/hands features from videos.
+
+    Failed decodes / extractors are **skipped** (no synthetic zero-filled clips).
+    Returns ``(X, y_kept, keep_indices)`` so callers can filter ChildID groups.
+    """
     try:
-        from src.data_processor import PureTFDataProcessor
-        
         logger.info("Processing multimodal data with motion, facial, and gesture features...")
-        
-        # Convert labels to numpy array
-        y = np.array(labels, dtype=np.int32)
-        
-        # Initialize feature extractors
+
+        labels_arr = np.asarray(labels, dtype=np.int32)
         motion_extractor = MotionFeatureExtractor()
         facial_extractor = FacialFeatureExtractor()
         gesture_extractor = GestureFeatureExtractor()
-        
-        # Extract features for each video
-        X_motion = []
-        X_facial = []
-        X_gesture = []
-        
+
+        X_motion: List[np.ndarray] = []
+        X_facial: List[np.ndarray] = []
+        X_gesture: List[np.ndarray] = []
+        keep_indices: List[int] = []
+
         logger.info(f"Processing {len(video_paths)} videos for multimodal features...")
-        
+
         for i, video_path in enumerate(video_paths):
             if i % 100 == 0:
                 logger.info(f"Processing video {i+1}/{len(video_paths)}")
-            
+
             try:
-                # Sample frames from video
                 frames = sample_frames(video_path, config['max_frames'], (224, 224))
                 if frames is None:
-                    logger.warning(f"Failed to sample frames from {video_path}")
-                    # Use zero features as fallback
-                    X_motion.append(np.zeros((config['max_frames'], 8)))
-                    X_facial.append(np.zeros((config['max_frames'], 15)))
-                    X_gesture.append(np.zeros((config['max_frames'], 45)))
+                    logger.warning(f"Skipping (no frames): {video_path}")
                     continue
-                
-                # Extract motion features
+
                 motion_features = motion_extractor.extract(frames)
-                if motion_features is None:
-                    motion_features = np.zeros((config['max_frames'], 8))
-                X_motion.append(motion_features)
-                
-                # Extract facial features
                 facial_features = facial_extractor.extract(frames)
-                if facial_features is None:
-                    facial_features = np.zeros((config['max_frames'], 15))
-                X_facial.append(facial_features)
-                
-                # Extract gesture features
                 gesture_features = gesture_extractor.extract(frames)
-                if gesture_features is None:
-                    gesture_features = np.zeros((config['max_frames'], 45))
+                if motion_features is None or facial_features is None or gesture_features is None:
+                    logger.warning(f"Skipping (cue extract failed): {video_path}")
+                    continue
+
+                X_motion.append(motion_features)
+                X_facial.append(facial_features)
                 X_gesture.append(gesture_features)
-                
+                keep_indices.append(i)
+
             except Exception as e:
-                logger.warning(f"Error processing video {video_path}: {e}")
-                # Use zero features as fallback
-                X_motion.append(np.zeros((config['max_frames'], 8)))
-                X_facial.append(np.zeros((config['max_frames'], 15)))
-                X_gesture.append(np.zeros((config['max_frames'], 45)))
-        
-        # Convert to numpy arrays
-        X_motion = np.array(X_motion, dtype=np.float32)
-        X_facial = np.array(X_facial, dtype=np.float32)
-        X_gesture = np.array(X_gesture, dtype=np.float32)
-        
-        logger.info(f"Multimodal data processed:")
-        logger.info(f"  Motion features: {X_motion.shape}")
-        logger.info(f"  Facial features: {X_facial.shape}")
-        logger.info(f"  Gesture features: {X_gesture.shape}")
+                logger.warning(f"Skipping (error) {video_path}: {e}")
+
+        if not keep_indices:
+            raise RuntimeError("No videos yielded usable multimodal features")
+
+        keep = np.asarray(keep_indices, dtype=np.int64)
+        y = labels_arr[keep]
+        X_motion_a = np.asarray(X_motion, dtype=np.float32)
+        X_facial_a = np.asarray(X_facial, dtype=np.float32)
+        X_gesture_a = np.asarray(X_gesture, dtype=np.float32)
+
+        n_skip = len(video_paths) - len(keep)
+        logger.info("Multimodal data processed:")
+        logger.info(f"  Kept {len(keep)} / {len(video_paths)} videos (skipped {n_skip})")
+        logger.info(f"  Motion features: {X_motion_a.shape}")
+        logger.info(f"  Facial features: {X_facial_a.shape}")
+        logger.info(f"  Gesture features: {X_gesture_a.shape}")
         logger.info(f"  Labels: {y.shape}")
-        
-        return [X_motion, X_facial, X_gesture], y
-        
+
+        return [X_motion_a, X_facial_a, X_gesture_a], y, keep
+
     except Exception as e:
         logger.error(f"Multimodal data processing failed: {e}")
         raise
@@ -637,16 +631,17 @@ def main():
         
         # Load data
         video_paths, labels, groups = load_data(config)
-        
+
         # Process multimodal data (always extract all 3 cues; model selects inputs)
-        X, y = process_multimodal_data(video_paths.tolist(), labels.tolist(), config)
-        
-        logger.info(f"Dataset processed: {len(X)} modalities, {y.shape}")
-        
+        X, y, keep = process_multimodal_data(video_paths.tolist(), labels.tolist(), config)
+        groups = np.asarray(groups)[keep]
+
+        logger.info(f"Dataset processed: {len(X)} modalities, {y.shape}, groups={len(groups)}")
+
         # Create cross-validation framework
         from src.cross_validation import PureTFCrossValidation
         cv_framework = PureTFCrossValidation(config)
-        
+
         # Run cross-validation
         logger.info("Running cross-validation...")
         results = cv_framework.run_cross_validation(

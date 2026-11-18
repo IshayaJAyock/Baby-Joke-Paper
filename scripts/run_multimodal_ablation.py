@@ -185,7 +185,9 @@ def _load_or_extract_features(
             return X, labels, groups
         logger.warning("Feature cache mismatch with current labels; re-extracting")
 
-    X, y = process_multimodal_data(video_paths.tolist(), labels.tolist(), config)
+    X, y, keep = process_multimodal_data(video_paths.tolist(), labels.tolist(), config)
+    groups = np.asarray(groups)[keep]
+    kept_paths = np.asarray(video_paths)[keep]
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         cache_path,
@@ -194,7 +196,7 @@ def _load_or_extract_features(
         gesture=X[2],
         y=y,
         groups=np.asarray(groups),
-        video_paths=np.asarray(video_paths),
+        video_paths=kept_paths,
     )
     logger.info(f"Saved feature cache → {cache_path}")
     return X, y, groups

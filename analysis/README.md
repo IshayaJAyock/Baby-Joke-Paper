@@ -1,23 +1,29 @@
 Analysis
 =======
 
-This folder contains the statistical analysis of the child-held-out run, the figures, and a note on how to present them.
+Statistical notebooks and helpers for **real-video** child-held-out runs produced by `scripts/run_*.py`.
 
-`presenting_results.md` is the guide for the chapter: one accuracy endpoint, Friedman then Nemenyi, and confusion matrices on a shared count scale.
+## Video training entrypoints (repo root)
 
-`cross_validation_analysis.ipynb` reads `../main-output` and does not train. Run it from this directory after the training notebook.
+```bash
+python scripts/run_multimodal.py                 # full multi-cue (attention + gating)
+python scripts/run_multimodal.py --ablation concat
+python scripts/run_multimodal_ablation.py        # all cue / fusion ablations
+python scripts/run_3d_cnn.py
+python scripts/run_tan.py
+python scripts/run_cnn_lstm.py
+```
 
-`_extended_meaning.py` recomputes complementarity (oracle), ECE calibration, accuracy-vs-epochs, and per-child accuracy from the saved `fold_*_predictions.npz` files. It writes extra CSVs under `outputs/` and figures under `figures/`, and self-checks against pooled counts and McNemar discordant counts.
+Features come from `data/videos/` (Farneback / MediaPipe / ResNet / RGB). Results default to `outputs/`.
 
-Contents:
-- `cross_validation_analysis.ipynb`: Main analysis notebook (publication-quality plots)
-- `_extended_meaning.py`: Extra meaning analyses without retraining
-- `figures/`: Saved PNG/PDF figures
-- `outputs/`: CSV summaries (bootstrap CIs, ranks, Wilcoxon, McNemar, ECE, per-child, …)
-- `presenting_results.md`: How to put the results on the page
+## Notebooks in this folder
 
-Reproduce:
-1. Execute `cross_validation_analysis.ipynb` with kernel `ml` and working directory `analysis/`.
-2. Run `python _extended_meaning.py` from `analysis/` (or via the repo-root relative path).
+- `multicue_ablation.ipynb` — runs / plots **real-video** multi-cue ablations via `scripts/run_multimodal_ablation.py`. Writes under `outputs/ablation_multicue/`.
+- `cross_validation_analysis.ipynb` — does **not** train; reads CV scores from `../outputs` (real-video script outputs). Do not point it at simulated `main-output/`.
 
-Note: Large figures and CSVs may be ignored by git; re-generate locally.
+## Reproduce
+
+1. Train models with the scripts above (videos under `data/videos/`).
+2. From `analysis/`, run `multicue_ablation.ipynb` and/or `cross_validation_analysis.ipynb`.
+
+Note: Large figures and CSVs under `figures/` / `outputs/` may be gitignored; regenerate locally.
