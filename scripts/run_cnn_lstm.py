@@ -107,7 +107,7 @@ def configure_tf_m3():
     except Exception as e:
         logger.warning(f"TensorFlow configuration failed: {e}")
 
-def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load and prepare data"""
     try:
         logger.info("Loading data...")
@@ -139,17 +139,26 @@ def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
         
         # Store class names for later use
         config['class_names'] = ['NomNomNom', 'Peekaboo', 'TearingPaper', 'ThatsNotACat', 'ThatsNotAHat']
-        
-        # Extract video paths and labels
-        video_paths = df['video_path'].tolist()
-        labels = df['label'].tolist()
-        
-        # Convert to numpy arrays
-        video_paths = np.array(video_paths)
-        labels = np.array(labels)
-        
-        logger.info(f"Data prepared: {len(video_paths)} videos, {len(set(labels))} classes")
-        return video_paths, labels
+
+        # Drop duplicate VideoIDs (keep first), matching the audited cohort (1,404 clips)
+        before = len(df)
+        df = df.drop_duplicates(subset=['VideoID'], keep='first').reset_index(drop=True)
+        if len(df) != before:
+            logger.info(f"Dropped {before - len(df)} duplicate VideoID rows -> {len(df)} clips")
+
+        # ChildID == dyad in this workbook (1:1 with ParentID); used for group CV
+        if 'ChildID' not in df.columns:
+            raise KeyError('ChildID column required for StratifiedGroupKFold')
+        groups = df['ChildID'].astype(str).to_numpy()
+
+        video_paths = np.array(df['video_path'].tolist())
+        labels = np.array(df['label'].tolist())
+
+        logger.info(
+            f"Data prepared: {len(video_paths)} videos, {len(set(labels))} classes, "
+            f"{len(np.unique(groups))} ChildID groups"
+        )
+        return video_paths, labels, groups
         
     except Exception as e:
         logger.error(f"Data loading failed: {e}")
@@ -217,11 +226,12 @@ def main():
             'num_epochs': std_config.num_epochs,
             'n_splits': std_config.cv_folds,
             'random_state': std_config.cv_random_state,
+            'use_group_cv': getattr(std_config, 'use_group_cv', True),
             'num_classes': std_config.num_classes
         }
         
         # Load data
-        video_paths, labels = load_data(config)
+        video_paths, labels, groups = load_data(config)
         
         # Create data processor
         from src.data_processor import PureTFDataProcessor
@@ -249,7 +259,7 @@ def main():
         results = cv_framework.run_cross_validation(
             model_name="CNN_LSTM",
             model_trainer=train_single_fold,
-            X=X, y=y, config=config
+            X=X, y=y, config=config, groups=groups
         )
         
         # Update class names in results manager

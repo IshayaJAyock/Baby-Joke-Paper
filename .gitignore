@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 .env
 .venv
+.vscode/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -29,3 +30,23 @@ _models-backup/**
 _multimodal_datasets/**
 all-files/**
 _main_ssamples-used*
+
+# Results / writeup trees (not part of the original code base)
+results/
+f1*
+f2*
+f-result/
+f2-result/
+main-output/
+
+# Local notes / supervision / review markdown
+recent-reve*.md
+recent-review*.md
+2026-11*.md
+Exper*mental_Se*.md
+nigeria_banks_panel_*.md
+
+# Other files not in the previous (tracked) code base
+me-try.py
+analysis/_extended_meaning.py
+analysis/presenting_results.md

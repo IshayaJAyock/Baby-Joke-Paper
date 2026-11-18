@@ -210,14 +210,19 @@ class ResultsManager:
             # Generate confusion matrix
             cm = confusion_matrix(y_true, y_pred)
             
-            # Create visualization
-            plt.figure(figsize=(10, 8))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                       xticklabels=class_names, yticklabels=class_names)
-            plt.title(f'Confusion Matrix - {model_name}')
-            plt.xlabel('Predicted')
-            plt.ylabel('Actual')
-            plt.tight_layout()
+            # Counts are drawn large enough to fill the cell; the default
+            # annotation size leaves a three-digit count sitting in a wide box.
+            fig, ax = plt.subplots(figsize=(8.2, 7.2))
+            sns.heatmap(
+                cm, annot=True, fmt='d', cmap='Blues', square=True, ax=ax,
+                xticklabels=class_names, yticklabels=class_names,
+                linewidths=0.6, linecolor='white',
+                annot_kws={'size': 28, 'weight': 'bold'},
+            )
+            ax.set_title(f'Confusion Matrix - {model_name}', pad=12)
+            ax.set_xlabel('Predicted')
+            ax.set_ylabel('Actual')
+            fig.tight_layout()
             
             # Save plot
             plot_path = model_dir / "confusion_matrix.png"

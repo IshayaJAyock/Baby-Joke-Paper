@@ -13,7 +13,7 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report, roc_auc_score
@@ -81,13 +81,17 @@ class PureTFCrossValidation:
     
     def run_cross_validation(self, model_name: str, model_trainer: Callable, 
                            X: Any, y: np.ndarray, 
-                           config: Dict[str, Any]) -> Dict[str, Any]:
-        """Run cross-validation"""
+                           config: Dict[str, Any],
+                           groups: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        """Run cross-validation.
+
+        Infant / dyad hold-out (default when ``groups`` is provided or
+        ``config['use_group_cv']`` is True): ``StratifiedGroupKFold`` on
+        ``ChildID``. Clip-wise ``StratifiedKFold`` is retained only if
+        ``use_group_cv`` is explicitly False *and* groups are omitted.
+        """
         try:
             logger.info(f"Starting {self.n_splits}-fold cross-validation for {model_name}")
-            
-            # Initialize cross-validation
-            kfold = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
             
             # Support multimodal inputs: X can be a list/tuple of modality arrays
             is_multimodal = isinstance(X, (list, tuple))
@@ -108,6 +112,38 @@ class PureTFCrossValidation:
             
             if n_samples != len(y):
                 raise ValueError(f"Number of samples in X ({n_samples}) and y ({len(y)}) must match")
+
+            use_group_cv = bool(config.get('use_group_cv', True))
+            if groups is not None:
+                groups = np.asarray(groups)
+                if len(groups) != n_samples:
+                    raise ValueError(
+                        f"groups length ({len(groups)}) must match n_samples ({n_samples})"
+                    )
+
+            if use_group_cv:
+                if groups is None:
+                    raise ValueError(
+                        "use_group_cv=True requires `groups` (e.g. ChildID) so that "
+                        "no infant appears in both train and validation."
+                    )
+                kfold = StratifiedGroupKFold(
+                    n_splits=self.n_splits, shuffle=True, random_state=self.random_state
+                )
+                split_iter = kfold.split(np.zeros(n_samples), y, groups)
+                logger.info(
+                    "Using StratifiedGroupKFold on groups "
+                    f"(n_groups={len(np.unique(groups))}, seed={self.random_state})"
+                )
+            else:
+                kfold = StratifiedKFold(
+                    n_splits=self.n_splits, shuffle=True, random_state=self.random_state
+                )
+                split_iter = kfold.split(np.zeros(n_samples), y)
+                logger.warning(
+                    "Using clip-wise StratifiedKFold (use_group_cv=False); "
+                    "infant identity can leak between train and validation."
+                )
             
             # Store results
             fold_results = []
@@ -115,8 +151,7 @@ class PureTFCrossValidation:
             all_true_labels = []
             
             # Run cross-validation
-            # Important: when X is multimodal (list), generate splits based on y only
-            for fold, (train_idx, val_idx) in enumerate(kfold.split(np.zeros(n_samples), y)):
+            for fold, (train_idx, val_idx) in enumerate(split_iter):
                 try:
                     logger.info(f"Processing fold {fold + 1}/{self.n_splits}")
                     

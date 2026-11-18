@@ -110,7 +110,7 @@ def configure_tf_m3():
     except Exception as e:
         logger.warning(f"TensorFlow configuration failed: {e}")
 
-def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load and prepare data"""
     try:
         logger.info("Loading data...")
@@ -140,16 +140,26 @@ def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
         }
         df['label'] = df['JokeType'].map(joke_type_mapping)
         
-        # Extract video paths and labels
-        video_paths = df['video_path'].tolist()
-        labels = df['label'].tolist()
-        
-        # Convert to numpy arrays
-        video_paths = np.array(video_paths)
-        labels = np.array(labels)
-        
-        logger.info(f"Data prepared: {len(video_paths)} videos, {len(set(labels))} classes")
-        return video_paths, labels
+        config['class_names'] = ['NomNomNom', 'Peekaboo', 'TearingPaper', 'ThatsNotACat', 'ThatsNotAHat']
+
+        # Drop duplicate VideoIDs (keep first), matching the audited cohort (1,404 clips)
+        before = len(df)
+        df = df.drop_duplicates(subset=['VideoID'], keep='first').reset_index(drop=True)
+        if len(df) != before:
+            logger.info(f"Dropped {before - len(df)} duplicate VideoID rows -> {len(df)} clips")
+
+        if 'ChildID' not in df.columns:
+            raise KeyError('ChildID column required for StratifiedGroupKFold')
+        groups = df['ChildID'].astype(str).to_numpy()
+
+        video_paths = np.array(df['video_path'].tolist())
+        labels = np.array(df['label'].tolist())
+
+        logger.info(
+            f"Data prepared: {len(video_paths)} videos, {len(set(labels))} classes, "
+            f"{len(np.unique(groups))} ChildID groups"
+        )
+        return video_paths, labels, groups
         
     except Exception as e:
         logger.error(f"Data loading failed: {e}")
@@ -538,9 +548,48 @@ def train_single_fold(X_train: List[np.ndarray], y_train: np.ndarray,
         logger.error(f"Single fold training failed: {e}")
         raise
 
+def _parse_cli_args():
+    import argparse
+    from models.multimodal import ABLATION_VARIANTS
+    p = argparse.ArgumentParser(description="Multi-cue fusion CV on real videos")
+    p.add_argument(
+        "--ablation",
+        type=str,
+        default=None,
+        help=(
+            "Ablation variant: cue_motion|cue_face|cue_hands|concat|"
+            "attention_only|gating_only|full. Default = full (gated cross-attn)."
+        ),
+    )
+    p.add_argument(
+        "--results-dir",
+        type=str,
+        default=None,
+        help="Override results directory (default: config.results_dir or "
+             "outputs/ablation_multicue/<variant> when --ablation is set)",
+    )
+    p.add_argument(
+        "--list-ablations",
+        action="store_true",
+        help="Print supported ablation variants and exit",
+    )
+    args = p.parse_args()
+    if args.list_ablations:
+        print("Supported ablation variants:")
+        for v in ABLATION_VARIANTS:
+            print(f"  - {v}")
+        raise SystemExit(0)
+    if args.ablation is not None and args.ablation not in ABLATION_VARIANTS:
+        raise SystemExit(
+            f"Unknown --ablation={args.ablation!r}. Choose from {ABLATION_VARIANTS}"
+        )
+    return args
+
+
 def main():
     """Main function"""
     try:
+        cli = _parse_cli_args()
         logger.info("Starting Pure TensorFlow/Keras Multimodal Training")
         
         # Configure TensorFlow
@@ -548,20 +597,30 @@ def main():
         
         # Load configuration from config file
         from config.config import StandardConfig
+        from models.multimodal import ABLATION_VARIANTS  # noqa: F401
         std_config = StandardConfig()
+        ablation = cli.ablation or "full"
         
         # Configuration
+        results_dir = cli.results_dir
+        if results_dir is None:
+            if cli.ablation is not None:
+                results_dir = str(Path("outputs/ablation_multicue") / ablation)
+            else:
+                results_dir = std_config.results_dir
+
         config = {
             'metadata_path': std_config.metadata_path,
             'cache_dir': 'data/cache',
-            'results_dir': std_config.results_dir,
+            'results_dir': results_dir,
             'max_frames': std_config.num_frames,
             'frame_height': std_config.frame_size[0],
             'frame_width': std_config.frame_size[1],
             'motion_dim': 8,  # Motion features (optical flow)
             'facial_dim': 15,  # Facial features (MediaPipe Face Mesh)
             'gesture_dim': 45,  # Gesture features (MediaPipe Hands)
-            'fusion_method': std_config.multimodal['fusion_method'],
+            'fusion_method': ablation,
+            'ablation_variant': ablation,
             'attention_heads': std_config.multimodal['attention_heads'],
             'fusion_units': std_config.multimodal['fusion_units'],
             'dropout_rate': std_config.multimodal['dropout_rate'],
@@ -570,13 +629,16 @@ def main():
             'num_epochs': std_config.num_epochs,
             'n_splits': std_config.cv_folds,
             'random_state': std_config.cv_random_state,
+            'use_group_cv': getattr(std_config, 'use_group_cv', True),
             'num_classes': std_config.num_classes
         }
+        Path(config['results_dir']).mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ablation variant: {ablation}")
         
         # Load data
-        video_paths, labels = load_data(config)
+        video_paths, labels, groups = load_data(config)
         
-        # Process multimodal data
+        # Process multimodal data (always extract all 3 cues; model selects inputs)
         X, y = process_multimodal_data(video_paths.tolist(), labels.tolist(), config)
         
         logger.info(f"Dataset processed: {len(X)} modalities, {y.shape}")
@@ -588,9 +650,9 @@ def main():
         # Run cross-validation
         logger.info("Running cross-validation...")
         results = cv_framework.run_cross_validation(
-            model_name="Multimodal",
+            model_name=f"Multimodal_{ablation}",
             model_trainer=train_single_fold,
-            X=X, y=y, config=config
+            X=X, y=y, config=config, groups=groups
         )
         
         # Create summary report

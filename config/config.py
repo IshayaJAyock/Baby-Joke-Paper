@@ -54,7 +54,8 @@ class StandardConfig:
     multimodal: Dict[str, Any] = None
     
 
-    early_stopping_patience: int = 25       # Early stopping patience
+    early_stopping_patience: int = 15       # Matches models/*.py EarlyStopping patience
+    use_group_cv: bool = True               # StratifiedGroupKFold on ChildID (infant hold-out)
     reduce_lr_patience: int = 8             # Learning rate reduction patience
     reduce_lr_factor: float = 0.5           # Learning rate reduction factor
     min_learning_rate: float = 1e-7         # Minimum learning rate
@@ -120,11 +121,17 @@ class StandardConfig:
         
         if self.multimodal is None:
             self.multimodal = {
-                'fusion_method': 'concat',  # 'concat', 'attention', 'weighted'
-                'modalities': ['rgb', 'pose', 'audio'],
-                'rgb_backbone': 'resnet50',
-                'pose_landmarks': 68,
-                'audio_features': 128,
+                # Implemented streams in scripts/run_multimodal.py (not rgb/audio).
+                # fusion_method 'gated_cross_attention' maps to ablation 'full'
+                # in models/multimodal.py. Ablation table variants:
+                # cue_motion, cue_face, cue_hands, concat, attention_only,
+                # gating_only, full — see scripts/run_multimodal_ablation.py.
+                'fusion_method': 'gated_cross_attention',
+                'ablation_variant': 'full',
+                'modalities': ['motion', 'face', 'hands'],
+                'motion_dim': 8,
+                'facial_dim': 15,
+                'gesture_dim': 45,
                 'fusion_units': 256,
                 'attention_heads': 8,
                 'dropout_rate': 0.3

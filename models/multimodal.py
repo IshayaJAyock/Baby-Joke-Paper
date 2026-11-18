@@ -23,7 +23,7 @@ from tensorflow.keras.layers import (
     LayerNormalization, Reshape, Conv1D, MaxPooling1D,
     BatchNormalization, Activation, Add, Concatenate,
     MultiHeadAttention, GlobalMaxPooling1D, Multiply
-)
+)  # MultiHeadAttention used for C_MF / C_FM / C_GM cross-modal blocks
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (
     EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, 
@@ -45,8 +45,25 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 logger = logging.getLogger(__name__)
 
+# Ablation variants for the multi-cue fusion model (video pipeline).
+# (i) cues alone → cue_motion / cue_face / cue_hands
+# (ii) concat → pool+concat+project (no attention, no gate)
+# (iii) attention_only → cross-attn + concat + project (no gate)
+# (iv) gating_only → pool+concat+gate+project (no cross-attn)
+# (v) full → cross-attn + concat + gate + project
+ABLATION_VARIANTS = (
+    'cue_motion',
+    'cue_face',
+    'cue_hands',
+    'concat',
+    'attention_only',
+    'gating_only',
+    'full',
+)
+
+
 class Multimodal:
-    """Advanced Multimodal model with performance optimizations"""
+    """Multi-cue fusion model with configurable ablation variants."""
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -59,16 +76,27 @@ class Multimodal:
         self.learning_rate = config.get('learning_rate', 0.001)
         
         # Advanced configuration
-        self.attention_heads = 8
+        self.attention_heads = int(config.get('attention_heads', 8))
         self.key_dim = 64
         self.ff_dim = 512
-        self.fusion_dim = 256
+        self.fusion_dim = int(config.get('fusion_units', config.get('fusion_dim', 256)))
+        self.ablation_variant = str(
+            config.get('ablation_variant', config.get('fusion_method', 'full'))
+        ).lower()
+        if self.ablation_variant in ('gated_cross_attention', 'attention'):
+            self.ablation_variant = 'full'
+        if self.ablation_variant not in ABLATION_VARIANTS:
+            raise ValueError(
+                f"Unknown ablation_variant={self.ablation_variant!r}. "
+                f"Expected one of {ABLATION_VARIANTS}"
+            )
         
         # Configure TensorFlow for M3 MPS
         self._configure_tf()
         
         # Create model
         self.model = self._build_model()
+        logger.info(f"Multimodal built with ablation_variant={self.ablation_variant}")
         
     def _configure_tf(self):
         """Configure TensorFlow for optimal M3 MPS performance"""
@@ -102,32 +130,50 @@ class Multimodal:
             logger.warning(f"TensorFlow configuration failed: {e}")
     
     def _build_model(self) -> Model:
-        """Build the advanced multimodal model with performance optimizations"""
+        """Build multi-cue model for the selected ablation variant."""
         try:
-            # Input layers for each modality
-            motion_input = Input(shape=(self.sequence_length, self.motion_dim), name='motion_input')
-            facial_input = Input(shape=(self.sequence_length, self.facial_dim), name='facial_input')
-            gesture_input = Input(shape=(self.sequence_length, self.gesture_dim), name='gesture_input')
-            
-            # Process each modality
-            motion_features = self._build_motion_encoder(motion_input)
-            facial_features = self._build_facial_encoder(facial_input)
-            gesture_features = self._build_gesture_encoder(gesture_input)
-            
-            # Cross-modal attention and fusion
-            fused_features = self._build_cross_modal_fusion(motion_features, facial_features, gesture_features)
-            
-            # Classification head
-            outputs = self._build_classification_head(fused_features)
-            
-            # Create model
-            model = Model(
-                inputs=[motion_input, facial_input, gesture_input], 
-                outputs=outputs, 
-                name='Multimodal'
-            )
-            
-            # Optimizer
+            variant = self.ablation_variant
+
+            # --- (i) cues alone: single-modality encoder + head ---
+            if variant == 'cue_motion':
+                inp = Input(shape=(self.sequence_length, self.motion_dim), name='motion_input')
+                feat = self._build_motion_encoder(inp)
+                pooled = GlobalAveragePooling1D()(feat)
+                fused = self._project_vector(pooled, name_prefix='cue_motion')
+                outputs = self._build_classification_head_from_vector(fused)
+                inputs = inp
+            elif variant == 'cue_face':
+                inp = Input(shape=(self.sequence_length, self.facial_dim), name='facial_input')
+                feat = self._build_facial_encoder(inp)
+                pooled = GlobalAveragePooling1D()(feat)
+                fused = self._project_vector(pooled, name_prefix='cue_face')
+                outputs = self._build_classification_head_from_vector(fused)
+                inputs = inp
+            elif variant == 'cue_hands':
+                inp = Input(shape=(self.sequence_length, self.gesture_dim), name='gesture_input')
+                feat = self._build_gesture_encoder(inp)
+                pooled = GlobalAveragePooling1D()(feat)
+                fused = self._project_vector(pooled, name_prefix='cue_hands')
+                outputs = self._build_classification_head_from_vector(fused)
+                inputs = inp
+            else:
+                # Multi-input fusion variants: concat / attention_only / gating_only / full
+                motion_input = Input(shape=(self.sequence_length, self.motion_dim), name='motion_input')
+                facial_input = Input(shape=(self.sequence_length, self.facial_dim), name='facial_input')
+                gesture_input = Input(shape=(self.sequence_length, self.gesture_dim), name='gesture_input')
+
+                motion_features = self._build_motion_encoder(motion_input)
+                facial_features = self._build_facial_encoder(facial_input)
+                gesture_features = self._build_gesture_encoder(gesture_input)
+
+                fused_features = self._build_cross_modal_fusion(
+                    motion_features, facial_features, gesture_features, variant=variant
+                )
+                outputs = self._build_classification_head(fused_features)
+                inputs = [motion_input, facial_input, gesture_input]
+
+            model = Model(inputs=inputs, outputs=outputs, name=f'Multimodal_{variant}')
+
             optimizer = Adam(
                 learning_rate=self.learning_rate,
                 beta_1=0.9,
@@ -135,19 +181,44 @@ class Multimodal:
                 epsilon=1e-7,
                 clipnorm=1.0
             )
-            
             model.compile(
                 optimizer=optimizer,
                 loss=CategoricalCrossentropy(label_smoothing=0.05),
                 metrics=['accuracy', TopKCategoricalAccuracy(k=3, name='top_3_accuracy')]
             )
-            
             logger.info("Multimodal model built and compiled")
             return model
-            
+
         except Exception as e:
             logger.error(f"Model building failed: {e}")
             raise
+
+    def _project_vector(self, vec, name_prefix: str):
+        """Shared projection used by single-cue ablations."""
+        x = Dense(
+            self.fusion_dim, activation='relu',
+            kernel_regularizer=l1_l2(1e-5, 1e-4), name=f'{name_prefix}_proj'
+        )(vec)
+        x = BatchNormalization(name=f'{name_prefix}_bn')(x)
+        x = Dropout(0.3, name=f'{name_prefix}_do')(x)
+        return x
+
+    def _build_classification_head_from_vector(self, x):
+        """Classification head when input is already a pooled vector (no time axis)."""
+        x1 = Dense(512, activation='relu', kernel_regularizer=l1_l2(1e-5, 1e-4))(x)
+        x1 = BatchNormalization()(x1)
+        x1 = Dropout(0.4)(x1)
+
+        x2 = Dense(512, activation='relu', kernel_regularizer=l1_l2(1e-5, 1e-4))(x1)
+        x2 = BatchNormalization()(x2)
+        x2 = Dropout(0.3)(x2)
+
+        x = Add()([x1, x2])
+        x = Activation('relu')(x)
+        x = Dense(128, activation='relu', kernel_regularizer=l1_l2(1e-5, 1e-4))(x)
+        x = BatchNormalization()(x)
+        x = Dropout(0.2)(x)
+        return Dense(self.num_classes, activation='softmax', name='predictions')(x)
     
     
     def _build_motion_encoder(self, inputs):
@@ -207,28 +278,71 @@ class Multimodal:
         
         return x
     
-    def _build_cross_modal_fusion(self, motion_features, facial_features, gesture_features):
-        """Build cross-modal fusion with time-aligned pooling to avoid shape mismatches."""
-        # Temporal pooling to fixed-size vectors
-        motion_vec = GlobalAveragePooling1D()(motion_features)  # (batch, c_motion)
-        facial_vec = GlobalAveragePooling1D()(facial_features)  # (batch, c_facial)
-        gesture_vec = GlobalAveragePooling1D()(gesture_features) # (batch, c_gesture)
-        
-        # Concatenate pooled vectors
-        fused_vec = Concatenate()([motion_vec, facial_vec, gesture_vec])  # (batch, c_total)
-        
-        # Optional gating
-        gate = Dense(int(fused_vec.shape[-1]), activation='sigmoid')(fused_vec)
-        gated = Multiply()([fused_vec, gate])
-        
-        # Fusion projection
-        fused_features = Dense(self.fusion_dim, activation='relu',
-                              kernel_regularizer=l1_l2(1e-5, 1e-4))(gated)
-        fused_features = BatchNormalization()(fused_features)
-        fused_features = Dropout(0.3)(fused_features)
-        
-        # Expand to (batch, 1, fusion_dim) so the classification head's pooling works uniformly
-        fused_features = tf.keras.layers.Lambda(lambda t: tf.expand_dims(t, axis=1))(fused_features)
+    def _build_cross_modal_fusion(
+        self, motion_features, facial_features, gesture_features, variant: str = 'full'
+    ):
+        """Fusion block with ablation switches.
+
+        Variants
+        --------
+        concat : GAP each encoder → concat → project (no attention, no gate)
+        attention_only : pairwise MHA → GAP → concat → project (no gate)
+        gating_only : GAP → concat → sigmoid gate → project (no MHA)
+        full : pairwise MHA → GAP → concat → gate → project
+        """
+        d = int(self.fusion_dim)
+        heads = int(self.attention_heads)
+        key_dim = max(8, d // max(heads, 1))
+        use_attention = variant in ('attention_only', 'full')
+        use_gate = variant in ('gating_only', 'full')
+
+        M = Dense(d, activation='relu', name='proj_motion')(motion_features)
+        F = Dense(d, activation='relu', name='proj_face')(facial_features)
+        G = Dense(d, activation='relu', name='proj_gesture')(gesture_features)
+
+        if use_attention:
+            C_MF = MultiHeadAttention(
+                num_heads=heads, key_dim=key_dim, dropout=0.2, name='attn_MF'
+            )(query=M, value=F, key=F)
+            C_MF = LayerNormalization(name='ln_MF')(C_MF + M)
+
+            C_FM = MultiHeadAttention(
+                num_heads=heads, key_dim=key_dim, dropout=0.2, name='attn_FM'
+            )(query=F, value=M, key=M)
+            C_FM = LayerNormalization(name='ln_FM')(C_FM + F)
+
+            C_GM = MultiHeadAttention(
+                num_heads=heads, key_dim=key_dim, dropout=0.2, name='attn_GM'
+            )(query=G, value=M, key=M)
+            C_GM = LayerNormalization(name='ln_GM')(C_GM + G)
+
+            motion_seq, face_seq, gest_seq = C_MF, C_FM, C_GM
+        else:
+            motion_seq, face_seq, gest_seq = M, F, G
+
+        motion_vec = GlobalAveragePooling1D(name='gap_motion')(motion_seq)
+        facial_vec = GlobalAveragePooling1D(name='gap_face')(face_seq)
+        gesture_vec = GlobalAveragePooling1D(name='gap_gesture')(gest_seq)
+
+        fused_vec = Concatenate(name='concat_MF_FM_GM')(
+            [motion_vec, facial_vec, gesture_vec]
+        )
+
+        if use_gate:
+            gate = Dense(
+                int(fused_vec.shape[-1]), activation='sigmoid', name='fusion_gate'
+            )(fused_vec)
+            fused_vec = Multiply(name='gated_fusion')([fused_vec, gate])
+
+        fused_features = Dense(
+            self.fusion_dim, activation='relu',
+            kernel_regularizer=l1_l2(1e-5, 1e-4), name='fusion_proj'
+        )(fused_vec)
+        fused_features = BatchNormalization(name='fusion_bn')(fused_features)
+        fused_features = Dropout(0.3, name='fusion_do')(fused_features)
+        fused_features = tf.keras.layers.Lambda(
+            lambda t: tf.expand_dims(t, axis=1), name='fusion_expand'
+        )(fused_features)
         return fused_features
     
     def _build_classification_head(self, x):
@@ -304,12 +418,25 @@ class Multimodal:
             logger.warning(f"Callback creation failed: {e}")
             return []
     
+    @staticmethod
+    def select_inputs_for_variant(X: Any, variant: str) -> Any:
+        """Map a 3-modality list ``[motion, face, hands]`` to model inputs."""
+        if variant == 'cue_motion':
+            return X[0] if isinstance(X, (list, tuple)) else X
+        if variant == 'cue_face':
+            return X[1] if isinstance(X, (list, tuple)) else X
+        if variant == 'cue_hands':
+            return X[2] if isinstance(X, (list, tuple)) else X
+        return X
+
     def train(self, X_train: List[np.ndarray], y_train: np.ndarray, 
               X_val: List[np.ndarray], y_val: np.ndarray, 
               model_dir: Optional[Path], epochs: int = 100) -> Dict[str, Any]:
         """Train the model with advanced techniques"""
         try:
-            logger.info("Starting multimodal training...")
+            logger.info(f"Starting multimodal training ({self.ablation_variant})...")
+            X_train = self.select_inputs_for_variant(X_train, self.ablation_variant)
+            X_val = self.select_inputs_for_variant(X_val, self.ablation_variant)
             
             # Convert labels to categorical
             y_train_cat = to_categorical(y_train, num_classes=self.num_classes)
@@ -356,6 +483,7 @@ class Multimodal:
     def evaluate(self, X_test: List[np.ndarray], y_test: np.ndarray) -> Dict[str, Any]:
         """Evaluate the model"""
         try:
+            X_test = self.select_inputs_for_variant(X_test, self.ablation_variant)
             y_test_cat = to_categorical(y_test, num_classes=self.num_classes)
             
             # Evaluate model

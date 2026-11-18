@@ -23,7 +23,8 @@ from tensorflow.keras.layers import (
     LayerNormalization, Reshape, Conv3D, MaxPooling3D,
     BatchNormalization, Activation, Add, Concatenate,
     MultiHeadAttention, GlobalMaxPooling3D, AveragePooling3D,
-    GlobalAveragePooling1D, GlobalMaxPooling1D, TimeDistributed
+    GlobalAveragePooling1D, GlobalMaxPooling1D, TimeDistributed,
+    Softmax, Multiply, Lambda
 )
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (
@@ -190,17 +191,37 @@ class CNN3D:
         return x
     
     def _build_spatial_temporal_attention(self, x):
-        """Temporal attention over per-frame spatially pooled features."""
-        # Pool spatial dimensions per time step -> (batch, time, channels)
-        seq_features = tf.keras.layers.TimeDistributed(
-            tf.keras.layers.GlobalAveragePooling2D()
+        """Dual attention: spatial weights β then temporal multi-head attention.
+
+        ``x`` has shape (batch, time, H, W, C). A 1×1 Conv2D score is softmaxed
+        over the H×W grid (β), reweighted features are spatially pooled, then
+        MultiHeadAttention attends over time (α via MHA).
+        """
+        score = TimeDistributed(
+            tf.keras.layers.Conv2D(1, (1, 1), padding='same', activation=None),
+            name='spatial_score'
         )(x)
-        
-        # Self-attention across time
+
+        def _spatial_softmax(s):
+            # s: (B, T, H, W, 1) -> beta over H*W, broadcastable to channels
+            shp = tf.shape(s)
+            flat = tf.reshape(s, (shp[0], shp[1], -1))
+            beta = tf.nn.softmax(flat, axis=-1)
+            return tf.reshape(beta, (shp[0], shp[1], shp[2], shp[3], 1))
+
+        beta = Lambda(_spatial_softmax, name='spatial_beta')(score)
+        x_sp = Multiply(name='spatial_attend')([x, beta])
+
+        seq_features = TimeDistributed(
+            tf.keras.layers.GlobalAveragePooling2D(),
+            name='spatial_gap'
+        )(x_sp)
+
         attn = MultiHeadAttention(
             num_heads=self.attention_heads,
             key_dim=self.key_dim,
-            dropout=0.2
+            dropout=0.2,
+            name='temporal_mha'
         )(seq_features, seq_features)
         attn = LayerNormalization()(attn + seq_features)
         return attn

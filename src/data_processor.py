@@ -181,10 +181,9 @@ class PureTFDataProcessor:
             if random.random() > 0.5:
                 frames_tensor = tf.image.random_contrast(frames_tensor, lower=0.8, upper=1.2)
             
-            # Random rotation (small angles)
-            if random.random() > 0.5:
-                angle = random.uniform(-0.1, 0.1)
-                frames_tensor = tf.image.rot90(frames_tensor, k=0)  # Placeholder for rotation
+            # Geometric rotation is intentionally omitted: tf.image.rot90 only
+            # supports 90° steps and a prior placeholder used k=0 (no-op). Flip /
+            # brightness / contrast above are the active augmentations.
             
             return frames_tensor.numpy()
             
