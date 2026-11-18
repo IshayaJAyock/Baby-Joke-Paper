@@ -6,7 +6,7 @@
   "random_state": 3443,
   "n_rows": 1404,
   "epoch_cap": 150,
-  "early_stopping": "nested_inner_monitor_no_outer_refit",
+  "early_stopping": "nested_on_training_children_then_refit",
   "start_from_epoch": 15,
   "folds": [
     {
@@ -14210,12 +14210,13 @@
       "n_validation_children": 8
     }
   ],
-  "protocol_note": "Train on inner-fit children; monitor early-stopping/LR on inner-monitor children; score once on outer held-out children. No refit on full outer-train.",
+  "protocol_note": "Phase 1: inner-fit train + inner-monitor ES/LR (patience 25). Phase 2: refit on all outer-train children for best_epoch epochs. Outer test scored once; never used for callbacks.",
   "cohort_fingerprint": {
     "n_rows": 1404,
     "n_splits": 10,
     "random_state": 3443,
     "group_column": "ChildID",
     "index_hash": "fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280"
-  }
+  },
+  "early_stopping_patience": 25
 }

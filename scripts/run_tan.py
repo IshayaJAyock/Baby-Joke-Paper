@@ -163,7 +163,7 @@ def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarra
         raise
 
 def train_single_fold(X_train, y_train, X_val, y_val, fold_dir, config, X_test=None, y_test=None):
-    """Train on fit set, monitor INNER val for callbacks, score OUTER test when provided."""
+    """Nested protocol: selection (fit/monitor) or refit (full outer-train); score OUTER test when provided."""
     try:
         from models.tan import TAN
         model = TAN(config)
@@ -211,6 +211,9 @@ def main():
             'learning_rate': std_config.learning_rate,
             'batch_size': std_config.batch_size,
             'num_epochs': std_config.num_epochs,
+            'early_stopping_patience': std_config.early_stopping_patience,
+            'early_stopping_start_epoch': getattr(std_config, 'early_stopping_start_epoch', 15),
+            'reduce_lr_patience': std_config.reduce_lr_patience,
             'n_splits': std_config.cv_folds,
             'random_state': std_config.cv_random_state,
             'use_group_cv': getattr(std_config, 'use_group_cv', True),

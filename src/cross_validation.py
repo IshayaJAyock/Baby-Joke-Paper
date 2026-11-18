@@ -2,13 +2,16 @@
 Pure TensorFlow/Keras Cross-Validation Framework
 ==============================================
 
-ChildID-grouped nested evaluation:
+ChildID-grouped nested evaluation (``nested_on_training_children_then_refit``):
 
 1. Outer ``StratifiedGroupKFold`` (frozen ``config/shared_fold_indices.json`` when present)
    holds out validation infants for **final scoring only**.
 2. Inner ``GroupShuffleSplit`` on the outer-train infants supplies the callback /
-   ``ReduceLROnPlateau`` / early-stopping monitor set.
-3. Outer test infants are never passed as ``validation_data``.
+   ``ReduceLROnPlateau`` / early-stopping monitor set (patience 25).
+3. After selection, **refit** on all outer-train children for ``best_epoch`` epochs
+   at constant LR (no callbacks; outer test never monitored).
+4. Artifact schema: ``epochs_ran == best_epoch``, ``selection_epochs_ran`` = selection
+   length, ``n_train`` = full outer-train fold size.
 
 Artifacts match ``analysis/cross_validation_analysis.ipynb``.
 """
@@ -56,7 +59,7 @@ def _inner_child_split(
     groups_train: np.ndarray,
     fold_id: int,
     random_state: int,
-    test_size: float = 0.18,
+    test_size: float = 0.2,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Split outer-train into fit / monitor with no ChildID overlap."""
     for attempt in range(40):
@@ -215,12 +218,15 @@ class PureTFCrossValidation:
             "random_state": self.random_state,
             "n_rows": n_samples,
             "epoch_cap": int(self.config.get("num_epochs", 150)),
-            "early_stopping": "nested_inner_monitor_no_outer_refit",
+            "early_stopping": "nested_on_training_children_then_refit",
             "protocol_note": (
-                "Train on inner-fit children; monitor early-stopping/LR on inner-monitor "
-                "children; score once on outer held-out children. No refit on full outer-train."
+                "Phase 1: train on inner-fit children; monitor early-stopping/LR on "
+                "inner-monitor children (patience=25). Phase 2: refit on all outer-train "
+                "children for best_epoch epochs at constant LR. Outer test is scored once "
+                "and never used for callbacks."
             ),
             "start_from_epoch": int(self.config.get("early_stopping_start_epoch", 15)),
+            "early_stopping_patience": int(self.config.get("early_stopping_patience", 25)),
             "cohort_fingerprint": {
                 "n_rows": n_samples,
                 "n_splits": self.n_splits,
@@ -304,41 +310,90 @@ class PureTFCrossValidation:
 
                     X_fit = _index_data(X, fit_idx, is_multimodal)
                     X_mon = _index_data(X, mon_idx, is_multimodal)
+                    X_outer = _index_data(X, train_idx, is_multimodal)
                     X_test = _index_data(X, test_idx, is_multimodal)
-                    y_fit, y_mon, y_test = y[fit_idx], y[mon_idx], y[test_idx]
+                    y_fit, y_mon = y[fit_idx], y[mon_idx]
+                    y_outer, y_test = y[train_idx], y[test_idx]
 
-                    try:
-                        from sklearn.utils.class_weight import compute_class_weight
+                    def _balanced_weights(y_arr: np.ndarray) -> Optional[Dict[int, float]]:
+                        try:
+                            from sklearn.utils.class_weight import compute_class_weight
 
-                        classes = np.unique(y_fit)
-                        cw = compute_class_weight("balanced", classes=classes, y=y_fit)
-                        class_weight = {int(c): float(w) for c, w in zip(classes, cw)}
-                    except Exception:
-                        class_weight = None
+                            classes = np.unique(y_arr)
+                            cw = compute_class_weight("balanced", classes=classes, y=y_arr)
+                            return {int(c): float(w) for c, w in zip(classes, cw)}
+                        except Exception:
+                            return None
 
-                    fold_dir = self.results_dir / "checkpoints" / model_folder_safe(display_name) / f"fold_{fold}"
+                    patience = int(config.get("early_stopping_patience", 25))
+                    fold_dir = (
+                        self.results_dir
+                        / "checkpoints"
+                        / model_folder_safe(display_name)
+                        / f"fold_{fold}"
+                    )
                     fold_dir.mkdir(parents=True, exist_ok=True)
 
-                    fold_cfg = {
+                    t0 = time.time()
+                    # Phase 1 — selection on inner-fit / inner-monitor (outer test unused).
+                    sel_cfg = {
                         **config,
-                        "class_weight": class_weight,
+                        "class_weight": _balanced_weights(y_fit),
                         "fold": fold,
                         "outer_test_idx": test_idx,
+                        "training_phase": "selection",
+                        "early_stopping_patience": patience,
+                        "early_stopping_start_epoch": int(
+                            config.get("early_stopping_start_epoch", 15)
+                        ),
+                        "enable_callbacks": True,
                     }
-
-                    t0 = time.time()
-                    # Train/monitor on inner split; score on untouched outer test.
-                    fold_out = model_trainer(
+                    sel_out = model_trainer(
                         X_fit,
                         y_fit,
                         X_mon,
                         y_mon,
-                        fold_dir,
-                        fold_cfg,
+                        fold_dir / "selection",
+                        sel_cfg,
+                        X_test=None,
+                        y_test=None,
+                    )
+                    best_epoch = int(sel_out.get("best_epoch", 0) or 0)
+                    selection_epochs_ran = int(sel_out.get("epochs_ran", best_epoch) or best_epoch)
+                    if best_epoch < 1:
+                        raise RuntimeError(f"{display_name} fold {fold}: invalid best_epoch={best_epoch}")
+
+                    # Phase 2 — refit on all outer-train children for best_epoch epochs.
+                    refit_cfg = {
+                        **config,
+                        "class_weight": _balanced_weights(y_outer),
+                        "fold": fold,
+                        "outer_test_idx": test_idx,
+                        "training_phase": "refit",
+                        "num_epochs": best_epoch,
+                        "enable_callbacks": False,
+                    }
+                    fold_out = model_trainer(
+                        X_outer,
+                        y_outer,
+                        X_mon,
+                        y_mon,
+                        fold_dir / "refit",
+                        refit_cfg,
                         X_test=X_test,
                         y_test=y_test,
                     )
                     fold_time = time.time() - t0
+                    # Artifact schema matches committed results: epochs_ran == best_epoch;
+                    # selection_epochs_ran records the inner early-stopping run length.
+                    fold_out["best_epoch"] = best_epoch
+                    fold_out["epochs_ran"] = best_epoch
+                    fold_out["selection_epochs_ran"] = selection_epochs_ran
+                    fold_out["selection_train_time"] = float(sel_out.get("training_time", 0.0))
+                    fold_out["training_time"] = float(
+                        float(sel_out.get("training_time", 0.0))
+                        + float(fold_out.get("training_time", 0.0))
+                    )
 
                     y_pred = np.asarray(fold_out.get("y_pred", []))
                     y_true = np.asarray(fold_out.get("y_true", y_test))
@@ -363,8 +418,6 @@ class PureTFCrossValidation:
                         val_idx=test_idx,
                     )
 
-                    best_epoch = int(fold_out.get("best_epoch", fold_out.get("epochs_ran", 0) or 0))
-                    epochs_ran = int(fold_out.get("epochs_ran", best_epoch))
                     append_performance_row(
                         self.results_dir,
                         {
@@ -375,25 +428,26 @@ class PureTFCrossValidation:
                             "train_loss": fold_out.get("train_loss", np.nan),
                             "validation_loss": fold_out.get("validation_loss", np.nan),
                             "epoch_cap": int(config.get("num_epochs", 150)),
-                            "epochs_ran": epochs_ran,
-                            "selection_epochs_ran": epochs_ran,
+                            "epochs_ran": best_epoch,
+                            "selection_epochs_ran": selection_epochs_ran,
                             "best_epoch": best_epoch,
                             "training_time": float(fold_out.get("training_time", fold_time)),
                             "inference_ms_per_clip": fold_out.get("inference_ms_per_clip", np.nan),
                             "inference_ms_per_clip_sd": fold_out.get("inference_ms_per_clip_sd", np.nan),
                             "n_correct": n_correct,
-                            "n_train": int(len(fit_idx)),
+                            "n_train": int(len(train_idx)),
                             "n_validation": int(len(test_idx)),
-                            "n_train_children": int(len(np.unique(groups[fit_idx]))),
+                            "n_train_children": int(len(np.unique(groups[train_idx]))),
                             "n_validation_children": int(len(np.unique(groups[test_idx]))),
                         },
                     )
 
                     fold_out["fold"] = fold
                     fold_out["fold_time"] = fold_time
-                    fold_out["train_size"] = len(fit_idx)
+                    fold_out["train_size"] = len(train_idx)
                     fold_out["val_size"] = len(test_idx)
                     fold_out["monitor_size"] = len(mon_idx)
+                    fold_out["fit_size"] = len(fit_idx)
                     fold_out["validation_accuracy"] = acc
                     fold_out["y_true"] = y_true
                     fold_out["y_pred"] = y_pred
@@ -417,7 +471,7 @@ class PureTFCrossValidation:
                 "fold_results": fold_results,
                 "overall_metrics": overall_metrics,
                 "config": config,
-                "protocol": "nested_childid_grouped",
+                "protocol": "nested_on_training_children_then_refit",
             }
             results_file = self.results_dir / f"{display_name}_cv_results.json"
             self._save_results(results, results_file)

@@ -54,7 +54,8 @@ class StandardConfig:
     multimodal: Dict[str, Any] = None
     
 
-    early_stopping_patience: int = 15       # Matches models/*.py EarlyStopping patience
+    early_stopping_patience: int = 25       # Inner-monitor EarlyStopping patience (matches result schema)
+    early_stopping_start_epoch: int = 15    # Ignore early epochs before ES monitoring
     use_group_cv: bool = True               # StratifiedGroupKFold on ChildID (infant hold-out)
     reduce_lr_patience: int = 8             # Learning rate reduction patience
     reduce_lr_factor: float = 0.5           # Learning rate reduction factor

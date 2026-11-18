@@ -246,14 +246,17 @@ class CNNLSTM:
         """Create training callbacks (early stopping always on; monitors INNER val only)."""
         try:
             callbacks = []
-            patience = int(self.config.get('early_stopping_patience', 15))
-
-            early_stopping = EarlyStopping(
+            patience = int(self.config.get('early_stopping_patience', 25))
+            es_kwargs = dict(
                 monitor='val_accuracy',
                 patience=patience,
                 restore_best_weights=True,
                 verbose=1,
             )
+            start_from = int(self.config.get('early_stopping_start_epoch', 15))
+            if start_from > 0:
+                es_kwargs['start_from_epoch'] = start_from
+            early_stopping = EarlyStopping(**es_kwargs)
             callbacks.append(early_stopping)
 
             if model_dir:
@@ -291,14 +294,17 @@ class CNNLSTM:
             y_train_cat = to_categorical(y_train, num_classes=self.num_classes)
             y_val_cat = to_categorical(y_val, num_classes=self.num_classes)
             
-            # Create callbacks
-            callbacks = self._create_callbacks(model_dir)
+            # Create callbacks (disabled for outer-train refit phase)
+            enable_callbacks = bool(self.config.get('enable_callbacks', True))
+            if self.config.get('training_phase') == 'refit':
+                enable_callbacks = False
+            callbacks = self._create_callbacks(model_dir) if enable_callbacks else []
             
             # Train model
             start_time = time.time()
             history = self.model.fit(
                 X_train, y_train_cat,
-                validation_data=(X_val, y_val_cat),
+                validation_data=(X_val, y_val_cat) if enable_callbacks else None,
                 epochs=epochs,
                 batch_size=self.config.get('batch_size', 16),
                 callbacks=callbacks,
