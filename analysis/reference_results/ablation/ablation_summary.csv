@@ -1,0 +1,8 @@
+variant,Variant,Cues used,Fusion mechanism,Accuracy (%) mean±SD,mean_accuracy,sd_accuracy
+cue_motion,Motion-only (M),M,—,73.24 ± 3.91,0.7323804113836345,0.0390855909136494
+cue_face,Facial-only (F),F,—,86.43 ± 3.44,0.8643063809762366,0.0344360882150749
+cue_hands,Gesture-only (G),G,—,96.02 ± 1.45,0.9601694519557896,0.0144792882028651
+concat,Naïve fusion (Concat),M+F+G,Concat + MLP,96.20 ± 1.32,0.962,0.0131706637661269
+attention_only,Cross-modal attention only,M+F+G,Attention (no gating),96.40 ± 1.10,0.964,0.0110153196297811
+gating_only,Gating only,M+F+G,Scalar gates (no attention),96.55 ± 1.10,0.9655,0.0110024319835253
+full,Full multi-cue (Attention + Gating),M+F+G,Attention + gating (final),96.76 ± 1.11,0.9675817489045644,0.0111271361275738

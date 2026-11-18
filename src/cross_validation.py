@@ -32,6 +32,7 @@ from .artifact_io import (
     append_performance_row,
     canonical_model_name,
     ensure_shared_folds,
+    folds_index_hash,
     load_shared_folds,
     save_fold_predictions,
     write_fold_indices_sidecar,
@@ -76,6 +77,8 @@ def _inner_child_split(
     raise RuntimeError(f"Inner ChildID split failed for fold {fold_id}")
 
 
+
+
 class PureTFCrossValidation:
     """Pure TensorFlow/Keras nested ChildID cross-validation."""
 
@@ -108,6 +111,60 @@ class PureTFCrossValidation:
         except Exception as e:
             logger.warning(f"TensorFlow configuration failed: {e}")
 
+    def _validate_frozen_folds(
+        self,
+        shared: Dict[str, Any],
+        y: np.ndarray,
+        groups: Optional[np.ndarray],
+        n_samples: int,
+    ) -> None:
+        """Assert frozen indices cover the cohort and keep ChildIDs disjoint."""
+        folds = list(shared.get("folds", []))
+        if len(folds) != self.n_splits:
+            raise ValueError(f"Frozen folds={len(folds)} != n_splits={self.n_splits}")
+        all_val = []
+        for fold_meta in folds:
+            tr = np.asarray(fold_meta["train_idx"], dtype=np.int64)
+            va = np.asarray(fold_meta["val_idx"], dtype=np.int64)
+            if tr.min() < 0 or va.min() < 0 or tr.max() >= n_samples or va.max() >= n_samples:
+                raise ValueError(f"Fold {fold_meta.get('fold')} indices out of range for n={n_samples}")
+            if set(tr) & set(va):
+                raise ValueError(f"Fold {fold_meta.get('fold')} train/val index overlap")
+            if groups is not None:
+                g_tr = set(np.asarray(groups)[tr].tolist())
+                g_va = set(np.asarray(groups)[va].tolist())
+                leak = g_tr & g_va
+                if leak:
+                    raise ValueError(
+                        f"Fold {fold_meta.get('fold')} ChildID leakage across outer split: {sorted(leak)[:5]}"
+                    )
+            all_val.extend(va.tolist())
+        if len(set(all_val)) != n_samples:
+            raise ValueError(
+                f"Outer val indices cover {len(set(all_val))} unique rows, expected {n_samples}"
+            )
+        fp = shared.get("cohort_fingerprint") or {}
+        if fp.get("n_rows") not in (None, n_samples):
+            raise ValueError(f"cohort_fingerprint.n_rows={fp.get('n_rows')} != {n_samples}")
+        if fp.get("random_state") not in (None, self.random_state):
+            logger.warning(
+                f"Frozen fingerprint random_state={fp.get('random_state')} "
+                f"vs config random_state={self.random_state}"
+            )
+        expected_hash = folds_index_hash(folds)
+        stored_hash = fp.get("index_hash")
+        if stored_hash in (None, "", "null"):
+            logger.warning(
+                "Frozen folds lack cohort_fingerprint.index_hash; "
+                f"computed={expected_hash[:16]}…"
+            )
+        elif stored_hash != expected_hash:
+            raise ValueError(
+                "Frozen fold index_hash mismatch "
+                f"(stored={stored_hash[:16]}… computed={expected_hash[:16]}…). "
+                "Cohort row order may have changed."
+            )
+
     def _resolve_outer_folds(
         self, y: np.ndarray, groups: Optional[np.ndarray], n_samples: int
     ) -> List[Dict[str, Any]]:
@@ -119,6 +176,7 @@ class PureTFCrossValidation:
         if use_frozen and shared_path.exists():
             shared = load_shared_folds(shared_path)
             if int(shared.get("n_rows", -1)) == n_samples and int(shared.get("n_splits", -1)) == self.n_splits:
+                self._validate_frozen_folds(shared, y, groups, n_samples)
                 logger.info(f"Using frozen ChildID folds from {shared_path}")
                 return list(shared["folds"])
             logger.warning(
@@ -157,8 +215,19 @@ class PureTFCrossValidation:
             "random_state": self.random_state,
             "n_rows": n_samples,
             "epoch_cap": int(self.config.get("num_epochs", 150)),
-            "early_stopping": "nested_on_training_children_then_refit",
+            "early_stopping": "nested_inner_monitor_no_outer_refit",
+            "protocol_note": (
+                "Train on inner-fit children; monitor early-stopping/LR on inner-monitor "
+                "children; score once on outer held-out children. No refit on full outer-train."
+            ),
             "start_from_epoch": int(self.config.get("early_stopping_start_epoch", 15)),
+            "cohort_fingerprint": {
+                "n_rows": n_samples,
+                "n_splits": self.n_splits,
+                "random_state": self.random_state,
+                "group_column": "ChildID",
+                "index_hash": folds_index_hash(folds),
+            },
             "folds": folds,
         }
         out = self.results_dir / "shared_fold_indices.json"
@@ -221,6 +290,17 @@ class PureTFCrossValidation:
                     )
                     fit_idx = train_idx[fit_rel]
                     mon_idx = train_idx[mon_rel]
+
+                    # Runtime ChildID disjointness (outer + inner)
+                    g_fit = set(groups[fit_idx].tolist())
+                    g_mon = set(groups[mon_idx].tolist())
+                    g_test = set(groups[test_idx].tolist())
+                    if g_fit & g_mon:
+                        raise ValueError(f"Fold {fold}: ChildID leak fit∩monitor")
+                    if g_fit & g_test or g_mon & g_test:
+                        raise ValueError(f"Fold {fold}: ChildID leak into outer test")
+                    if set(fit_idx) & set(mon_idx) or set(fit_idx) & set(test_idx) or set(mon_idx) & set(test_idx):
+                        raise ValueError(f"Fold {fold}: index overlap across fit/monitor/test")
 
                     X_fit = _index_data(X, fit_idx, is_multimodal)
                     X_mon = _index_data(X, mon_idx, is_multimodal)

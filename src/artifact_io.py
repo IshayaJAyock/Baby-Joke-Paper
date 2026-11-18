@@ -57,6 +57,22 @@ PERF_COLUMNS = [
 ]
 
 
+
+def folds_index_hash(folds: List[Dict[str, Any]]) -> str:
+    """Stable fingerprint of outer train/val index lists."""
+    import hashlib
+    payload = []
+    for fold_meta in sorted(folds, key=lambda f: int(f["fold"])):
+        payload.append(
+            {
+                "fold": int(fold_meta["fold"]),
+                "train_idx": [int(i) for i in fold_meta["train_idx"]],
+                "val_idx": [int(i) for i in fold_meta["val_idx"]],
+            }
+        )
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
 def canonical_model_name(name: str) -> str:
     n = str(name)
     if n.startswith("Multimodal"):

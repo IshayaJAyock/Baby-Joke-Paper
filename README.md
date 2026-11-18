@@ -18,11 +18,13 @@
 
 This repository compares four architectures for **five-class joke-type video classification** on BabyJoke clips: `CNN-LSTM`, `3D-CNN`, `Temporal Attention Network (TAN)`, and a multi-cue motion–face–gesture model. After dropping 13 duplicate `VideoID` rows, the evaluation cohort is **1,404 clips from 88 infants**.
 
+Conclusions are limited to joke-type recognition under infant-held-out CV. Responsive-caregiving measurement is out of scope unless separately validated (see `SUBMISSION_DECLARATIONS.md`).
+
 ### Key contributions
 - Comparative evaluation of four spatiotemporal / multi-cue architectures
 - Multi-cue fusion with cross-modal attention, gating, and cue/fusion ablations
 - Nested **ChildID-grouped** 10-fold CV (`config/shared_fold_indices.json`, seed 3443)
-- Artifact layout compatible with `analysis/cross_validation_analysis.ipynb`
+- Committed reference fold artifacts in `analysis/reference_results/` (same schema as live `outputs/`)
 
 ---
 

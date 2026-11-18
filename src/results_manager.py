@@ -3,12 +3,9 @@ Results Manager for Model Training
 =================================
 
 This module handles the organization and saving of training results in a structured format
-that matches the outputs/ structure exactly:
-- Single global CSV file: all_models_performance.csv (contains all 4 models)
-- Individual model subfolders with consistent naming: CNN_LSTM/, TAN/, Multimodal/, 3D_CNN/
-- Each model folder contains: classification_report.txt, confusion_matrix.png, accuracy.png, loss.png
-- Proper organization of results by model type
-- Includes Kappa's score in all reports
+Plots and classification reports live under per-model folders.
+Fold-level `all_models_performance.csv` is written only by `src.artifact_io`
+(single schema). This class must not append a second incompatible schema.
 
 Author: Ishaya, Jeremiah Ayock
 Date: 2025
@@ -42,11 +39,9 @@ class ResultsManager:
         self.model_results = {}
         self.class_names = None
         
-        # Initialize the main CSV file
+        # CSV path retained for callers; writes are owned by artifact_io only.
         self.main_csv_path = self.results_dir / "all_models_performance.csv"
-        self._initialize_main_csv()
-        
-        # Model name to folder mapping (matching outputs/ structure)
+
         # On-disk folders match analysis notebook (model_name.lower()).
         self.model_folder_mapping = {
             'CNN_LSTM': 'cnn_lstm',
@@ -55,21 +50,6 @@ class ResultsManager:
             'Multi-cue': 'multi-cue',
             '3D_CNN': '3d_cnn',
         }
-    
-    def _initialize_main_csv(self):
-        """Initialize the main CSV file with headers"""
-        try:
-            if not self.main_csv_path.exists():
-                # Create CSV with headers
-                headers = [
-                    'model_name', 'fold', 'accuracy', 'precision', 'recall', 
-                    'f1_score', 'kappa_score', 'training_time'
-                ]
-                df = pd.DataFrame(columns=headers)
-                df.to_csv(self.main_csv_path, index=False)
-                logger.info(f"Initialized main CSV: {self.main_csv_path}")
-        except Exception as e:
-            logger.error(f"Failed to initialize main CSV: {e}")
     
     def _get_model_folder_name(self, model_name: str) -> str:
         """Get the correct folder name for a model based on outputs/ structure"""
@@ -84,74 +64,32 @@ class ResultsManager:
             return 0.0
         
     def add_fold_result(self, model_name: str, fold: int, results: Dict[str, Any]):
-        """Add results from a single fold"""
+        """Store fold results in memory. CSV rows are written by artifact_io only."""
         try:
-            # Add model name and fold to results
             results['model_name'] = model_name
             results['fold'] = fold
-            
-            # Calculate kappa score if predictions are available
             if 'y_pred' in results and 'y_true' in results:
-                kappa_score = self._calculate_kappa_score(results['y_true'], results['y_pred'])
-                results['kappa_score'] = kappa_score
+                results['kappa_score'] = self._calculate_kappa_score(
+                    results['y_true'], results['y_pred']
+                )
             else:
                 results['kappa_score'] = 0.0
-            
-            # Store in all results
             self.all_results.append(results)
-            
-            # Store in model-specific results
-            if model_name not in self.model_results:
-                self.model_results[model_name] = []
-            self.model_results[model_name].append(results)
-            
-            # Append to main CSV immediately
-            self._append_to_main_csv(model_name, fold, results)
-            
+            self.model_results.setdefault(model_name, []).append(results)
             logger.info(f"Added fold {fold} results for {model_name}")
-            
         except Exception as e:
             logger.error(f"Failed to add fold result: {e}")
             raise
-    
-    def _append_to_main_csv(self, model_name: str, fold: int, results: Dict[str, Any]):
-        """Append fold results to the main CSV file"""
-        try:
-            # Prepare row data
-            row_data = {
-                'model_name': model_name,
-                'fold': fold,
-                'accuracy': results.get('accuracy', 0.0),
-                'precision': results.get('precision', 0.0),
-                'recall': results.get('recall', 0.0),
-                'f1_score': results.get('f1_score', 0.0),
-                'kappa_score': results.get('kappa_score', 0.0),
-                'training_time': results.get('training_time', 0.0)
-            }
-            
-            # Append to CSV
-            df = pd.DataFrame([row_data])
-            df.to_csv(self.main_csv_path, mode='a', header=False, index=False)
-            
-        except Exception as e:
-            logger.error(f"Failed to append to main CSV: {e}")
-    
-    def save_all_results_csv(self, filename: str = "all_models_results.csv"):
-        """Save all results to a single CSV file"""
+
+    def save_all_results_csv(self, filename: str = "all_models_results_legacy.csv"):
+        """Optional legacy dump; never writes all_models_performance.csv."""
         try:
             if not self.all_results:
                 logger.warning("No results to save")
                 return
-            
-            # Convert to DataFrame
-            df = pd.DataFrame(self.all_results)
-            
-            # Save to CSV
             csv_path = self.results_dir / filename
-            df.to_csv(csv_path, index=False)
-            
-            logger.info(f"All results saved to: {csv_path}")
-            
+            pd.DataFrame(self.all_results).to_csv(csv_path, index=False)
+            logger.info(f"Legacy fold dump saved to: {csv_path}")
         except Exception as e:
             logger.error(f"Failed to save CSV results: {e}")
             raise
