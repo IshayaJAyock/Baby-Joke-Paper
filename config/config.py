@@ -38,29 +38,39 @@ class StandardConfig:
     stratified_cv: bool = True              # Use stratified CV for balanced folds
     
 
-    enable_augmentation: bool = False       # Main runners leave augmentation off
-    augmentation_probability: float = 0.5   # Probability of applying augmentation
-    brightness_range: float = 0.2           # Brightness variation range
-    contrast_range: Tuple[float, float] = (0.8, 1.2)  # Contrast variation range
-    saturation_range: Tuple[float, float] = (0.8, 1.2)  # Saturation variation range
-    hue_range: float = 0.1                  # Hue variation range
-    horizontal_flip: bool = True            # Enable horizontal flipping
-    rotation_range: int = 15                # Random rotation range in degrees
-    
-    
+    # Preprocessing (methods.md §Preprocessing / Appendix A)
+    target_fps: float = 20.0                # Standardise timeline to 20 fps
+    use_high_motion: bool = True            # Blend uniform + high optical-flow frames
+    high_motion_ratio: float = 0.5
+    enable_augmentation: bool = True        # Rotation, brightness, flip, temporal jitter/drop
+    augmentation_probability: float = 0.5
+    brightness_range: float = 0.2
+    contrast_range: Tuple[float, float] = (0.8, 1.2)
+    saturation_range: Tuple[float, float] = (0.8, 1.2)
+    hue_range: float = 0.1
+    horizontal_flip: bool = True
+    rotation_range: int = 15
+    stochastic_drop_prob: float = 0.1
+
     cnn_lstm: Dict[str, Any] = None
     cnn_3d: Dict[str, Any] = None
     temporal_attention: Dict[str, Any] = None
     multimodal: Dict[str, Any] = None
-    
 
-    early_stopping_patience: int = 25       # Inner-monitor EarlyStopping patience (matches result schema)
-    early_stopping_start_epoch: int = 15    # Ignore early epochs before ES monitoring
-    use_group_cv: bool = True               # StratifiedGroupKFold on ChildID (infant hold-out)
-    reduce_lr_patience: int = 8             # Learning rate reduction patience
-    reduce_lr_factor: float = 0.5           # Learning rate reduction factor
-    min_learning_rate: float = 1e-7         # Minimum learning rate
-    weight_decay: float = 1e-5              # Weight decay for regularization
+    # Training (methods.md Appendix A.3)
+    early_stopping_patience: int = 25
+    early_stopping_start_epoch: int = 15
+    use_group_cv: bool = True
+    reduce_lr_patience: int = 8
+    reduce_lr_factor: float = 0.5
+    min_learning_rate: float = 1e-7
+    weight_decay: float = 1e-5
+    label_smoothing: float = 0.05
+    adam_beta_1: float = 0.9
+    adam_beta_2: float = 0.999
+    adam_epsilon: float = 1e-7
+    clipnorm: float = 1.0
+    batch_size_3d: int = 8                  # 3D-CNN uses smaller batches (A.3)
     
     
     data_dir: str = "data/main_data"
@@ -86,14 +96,17 @@ class StandardConfig:
         """Initialize model-specific parameters after dataclass creation"""
         if self.cnn_lstm is None:
             self.cnn_lstm = {
+                # methods.md A.2: multi-scale kernels {3,5,7}, BiLSTM 256→128, 8-head attention
                 'cnn_backbone': 'resnet50',
-                'lstm_units': [512, 256, 128],
+                'lstm_units': [256, 128],
+                'multi_scale_kernels': [3, 5, 7],
                 'dropout_rate': 0.2,
                 'dense_units': [256, 128, 64],
                 'use_bidirectional': True,
                 'return_sequences': True,
                 'attention_heads': 8,
-                'key_dim': 64
+                'key_dim': 64,
+                'ff_dim': 512,
             }
         
         if self.cnn_3d is None:

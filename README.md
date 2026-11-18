@@ -59,22 +59,17 @@ Joke-type accuracy is **not** a validated measure of responsive caregiving, reci
 
 ## Data Preprocessing Pipeline
 
-### 1. Video Frame Extraction
+Implemented in `src/video_preprocess.py` to match `methods.md`:
+
+1. **20 fps timeline** remapping, then **T = 20** frames at **224×224** RGB (audio unused).
+2. **Uniform ∪ high-motion** selection (Farneback magnitudes) with intelligent edge padding.
+3. **Augmentation on** by default: rotation (±15°), brightness, horizontal flip, temporal jitter, stochastic frame drop.
+4. **ResNet-50** (ImageNet) frame embeddings for CNN-LSTM / TAN; MediaPipe face/hands + Farneback motion for multi-cue.
+
 ```python
-# Uniform temporal sampling
-def sample_frames(video_path, max_frames=20, target_size=(224, 224)):
-    cap = cv2.VideoCapture(video_path)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    indices = np.linspace(0, total_frames - 1, max_frames, dtype=int)
-    # Extract and resize frames
+from src.video_preprocess import sample_video_frames, augment_clip
+frames = sample_video_frames(path, max_frames=20, target_fps=20.0, use_high_motion=True)
 ```
-
-### 2. Augmentation (config defaults; main runners currently pass `augmented=False`)
-Config still lists brightness/contrast/flip options in `config/config.py`. The main `scripts/run_*.py` paths extract features with **augmentation off** unless you enable it explicitly.
-
-### 3. Normalization
-- Pixel values scaled to [0, 1] where RGB volumes are used
-- Sequence length fixed at 20 frames
 
 ---
 

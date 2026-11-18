@@ -210,6 +210,20 @@ def main():
             'dropout_rate': std_config.temporal_attention['dropout_rate'],
             'learning_rate': std_config.learning_rate,
             'batch_size': std_config.batch_size,
+            'target_fps': getattr(std_config, 'target_fps', 20.0),
+            'use_high_motion': getattr(std_config, 'use_high_motion', True),
+            'high_motion_ratio': getattr(std_config, 'high_motion_ratio', 0.5),
+            'enable_augmentation': getattr(std_config, 'enable_augmentation', True),
+            'rotation_range': getattr(std_config, 'rotation_range', 15),
+            'brightness_range': getattr(std_config, 'brightness_range', 0.2),
+            'horizontal_flip': getattr(std_config, 'horizontal_flip', True),
+            'stochastic_drop_prob': getattr(std_config, 'stochastic_drop_prob', 0.1),
+            'label_smoothing': getattr(std_config, 'label_smoothing', 0.05),
+            'adam_beta_1': getattr(std_config, 'adam_beta_1', 0.9),
+            'adam_beta_2': getattr(std_config, 'adam_beta_2', 0.999),
+            'adam_epsilon': getattr(std_config, 'adam_epsilon', 1e-7),
+            'clipnorm': getattr(std_config, 'clipnorm', 1.0),
+
             'num_epochs': std_config.num_epochs,
             'early_stopping_patience': std_config.early_stopping_patience,
             'early_stopping_start_epoch': getattr(std_config, 'early_stopping_start_epoch', 15),
@@ -236,7 +250,7 @@ def main():
         logger.info("Processing dataset...")
         X, y, metadata = data_processor.process_dataset(
             video_paths.tolist(), labels.tolist(), 
-            augmented=False, cache_results=True
+            augmented=bool(config.get('enable_augmentation', True)), cache_results=True
         )
         
         logger.info(f"Dataset processed: {X.shape}, {y.shape}")

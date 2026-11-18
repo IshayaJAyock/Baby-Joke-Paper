@@ -373,64 +373,31 @@ class GestureFeatureExtractor:
             logger.error(f"Error in gesture feature extraction: {str(e)}")
             return None
 
-def sample_frames(video_path: str, max_frames: int, target_size: tuple = (224, 224)) -> Optional[np.ndarray]:
-    """
-    Sample frames uniformly from a video file.
-    """
+def sample_frames(
+    video_path: str,
+    max_frames: int,
+    target_size: tuple = (224, 224),
+    target_fps: float = 20.0,
+    use_high_motion: bool = True,
+) -> Optional[np.ndarray]:
+    """Methods-aligned sampling: 20 fps timeline, uniform∪high-motion, 224² RGB."""
     try:
-        logger.info(f"Opening video file: {video_path}")
-        cap = cv2.VideoCapture(video_path)
-        
-        if not cap.isOpened():
-            logger.error(f"Could not open video: {video_path}")
+        from src.video_preprocess import sample_video_frames
+
+        frames = sample_video_frames(
+            video_path,
+            max_frames=max_frames,
+            target_size=target_size,
+            target_fps=target_fps,
+            use_high_motion=use_high_motion,
+            to_rgb=True,
+            normalize=False,
+        )
+        if frames is None:
+            logger.error(f"No frames from {video_path}")
             return None
-
-        # Get video properties
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        
-        logger.info(f"Video properties - Frames: {total_frames}, FPS: {fps}, Size: {width}x{height}")
-
-        if total_frames == 0:
-            logger.error(f"Video has no frames: {video_path}")
-            return None
-        
-        if total_frames < max_frames:
-            logger.warning(f"Video has fewer frames ({total_frames}) than requested ({max_frames})")
-
-        # Calculate sampling indices
-        indices = np.linspace(0, total_frames - 1, max_frames, dtype=int)
-        frames = []
-
-        for idx in indices:
-            logger.debug(f"Reading frame {idx}")
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if ret:
-                frame = cv2.resize(frame, target_size)
-                frames.append(frame)
-            else:
-                logger.warning(f"Failed to read frame {idx} from {video_path}")
-
-        cap.release()
-
-        if len(frames) == 0:
-            logger.error(f"No frames were successfully read from {video_path}")
-            return None
-
-        if len(frames) < max_frames:
-            logger.warning(f"Only extracted {len(frames)} frames from {video_path}")
-            last_frame = frames[-1] if frames else np.zeros(
-                (target_size[0], target_size[1], 3), dtype=np.uint8
-            )
-            frames.extend([last_frame] * (max_frames - len(frames)))
-
-        frames_array = np.array(frames)
-        logger.info(f"Successfully sampled {len(frames)} frames from {video_path}")
-        return frames_array
-
+        logger.info(f"Sampled {len(frames)} frames from {video_path}")
+        return frames
     except Exception as e:
         logger.error(f"Error sampling frames from {video_path}: {str(e)}")
         return None
@@ -465,10 +432,26 @@ def process_multimodal_data(
                 logger.info(f"Processing video {i+1}/{len(video_paths)}")
 
             try:
-                frames = sample_frames(video_path, config['max_frames'], (224, 224))
+                frames = sample_frames(
+                    video_path,
+                    config["max_frames"],
+                    (config.get("frame_height", 224), config.get("frame_width", 224)),
+                    target_fps=float(config.get("target_fps", 20.0)),
+                    use_high_motion=bool(config.get("use_high_motion", True)),
+                )
                 if frames is None:
                     logger.warning(f"Skipping (no frames): {video_path}")
                     continue
+                if bool(config.get("enable_augmentation", True)):
+                    from src.video_preprocess import augment_clip
+
+                    frames = augment_clip(
+                        frames,
+                        rotation_range=float(config.get("rotation_range", 15.0)),
+                        brightness_delta=float(config.get("brightness_range", 0.2)),
+                        horizontal_flip=bool(config.get("horizontal_flip", True)),
+                        stochastic_drop_prob=float(config.get("stochastic_drop_prob", 0.1)),
+                    )
 
                 motion_features = motion_extractor.extract(frames)
                 facial_features = facial_extractor.extract(frames)
@@ -607,6 +590,19 @@ def main():
             'dropout_rate': std_config.multimodal['dropout_rate'],
             'learning_rate': std_config.learning_rate,
             'batch_size': std_config.batch_size,
+            'target_fps': getattr(std_config, 'target_fps', 20.0),
+            'use_high_motion': getattr(std_config, 'use_high_motion', True),
+            'high_motion_ratio': getattr(std_config, 'high_motion_ratio', 0.5),
+            'enable_augmentation': getattr(std_config, 'enable_augmentation', True),
+            'rotation_range': getattr(std_config, 'rotation_range', 15),
+            'brightness_range': getattr(std_config, 'brightness_range', 0.2),
+            'horizontal_flip': getattr(std_config, 'horizontal_flip', True),
+            'stochastic_drop_prob': getattr(std_config, 'stochastic_drop_prob', 0.1),
+            'label_smoothing': getattr(std_config, 'label_smoothing', 0.05),
+            'adam_beta_1': getattr(std_config, 'adam_beta_1', 0.9),
+            'adam_beta_2': getattr(std_config, 'adam_beta_2', 0.999),
+            'adam_epsilon': getattr(std_config, 'adam_epsilon', 1e-7),
+            'clipnorm': getattr(std_config, 'clipnorm', 1.0),
             'num_epochs': std_config.num_epochs,
             'early_stopping_patience': std_config.early_stopping_patience,
             'early_stopping_start_epoch': getattr(std_config, 'early_stopping_start_epoch', 15),

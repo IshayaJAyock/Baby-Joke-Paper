@@ -175,15 +175,15 @@ class Multimodal:
             model = Model(inputs=inputs, outputs=outputs, name=f'Multimodal_{variant}')
 
             optimizer = Adam(
-                learning_rate=self.learning_rate,
-                beta_1=0.9,
-                beta_2=0.999,
-                epsilon=1e-7,
-                clipnorm=1.0
+                learning_rate=float(self.config.get('learning_rate', getattr(self, 'learning_rate', 0.0005))),
+                beta_1=float(self.config.get('adam_beta_1', 0.9)),
+                beta_2=float(self.config.get('adam_beta_2', 0.999)),
+                epsilon=float(self.config.get('adam_epsilon', 1e-7)),
+                clipnorm=float(self.config.get('clipnorm', 1.0)),
             )
             model.compile(
                 optimizer=optimizer,
-                loss=CategoricalCrossentropy(label_smoothing=0.05),
+                loss=CategoricalCrossentropy(label_smoothing=float(self.config.get('label_smoothing', 0.05))),
                 metrics=['accuracy', TopKCategoricalAccuracy(k=3, name='top_3_accuracy')]
             )
             logger.info("Multimodal model built and compiled")

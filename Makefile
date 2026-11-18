@@ -63,6 +63,7 @@ analysis:
 test:
 	python tests/test_artifact_schema.py
 	python tests/test_nested_refit_schema.py
+	python tests/test_methods_preprocess.py
 
 clean:
 	rm -rf data/cache/* __pycache__/ */__pycache__/ .pytest_cache/ *.pyc *.pyo 2>/dev/null || true

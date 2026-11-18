@@ -92,7 +92,7 @@ class PureTFDataProcessor:
     def _create_feature_extractor(self):
         """Create ResNet50 feature extractor"""
         try:
-            base_model = tf.keras.applications.ResNet50V2(
+            base_model = tf.keras.applications.ResNet50(
                 weights='imagenet',
                 include_top=False,
                 input_shape=(*self.frame_size, 3),
@@ -118,75 +118,40 @@ class PureTFDataProcessor:
             raise
     
     def _extract_frames_tf(self, video_path: str) -> np.ndarray:
-        """Extract frames using pure TensorFlow operations"""
+        """Extract T frames via methods-aligned FPS + high-motion sampling."""
         try:
-            # Read video using OpenCV
-            cap = cv2.VideoCapture(video_path)
-            if not cap.isOpened():
-                raise ValueError(f"Cannot open video: {video_path}")
-            
-            frames = []
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            
-            # Calculate frame indices for uniform sampling
-            if total_frames <= self.max_frames:
-                frame_indices = list(range(total_frames))
-            else:
-                frame_indices = np.linspace(0, total_frames - 1, self.max_frames, dtype=int)
-            
-            # Extract frames
-            for frame_idx in frame_indices:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                ret, frame = cap.read()
-                if ret:
-                    # Resize frame
-                    frame = cv2.resize(frame, self.frame_size)
-                    # Convert BGR to RGB
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frames.append(frame)
-            
-            cap.release()
-            
-            if not frames:
+            from src.video_preprocess import sample_video_frames
+
+            frames = sample_video_frames(
+                video_path,
+                max_frames=self.max_frames,
+                target_size=self.frame_size,
+                target_fps=float(self.config.get("target_fps", 20.0)),
+                use_high_motion=bool(self.config.get("use_high_motion", True)),
+                high_motion_ratio=float(self.config.get("high_motion_ratio", 0.5)),
+                to_rgb=True,
+                normalize=True,
+            )
+            if frames is None:
                 raise ValueError(f"No frames extracted from: {video_path}")
-            
-            # Pad or truncate to max_frames
-            while len(frames) < self.max_frames:
-                frames.append(frames[-1])  # Repeat last frame
-            
-            frames = frames[:self.max_frames]
-            
-            return np.array(frames, dtype=np.float32) / 255.0
-            
+            return np.asarray(frames, dtype=np.float32)
         except Exception as e:
             logger.error(f"Frame extraction failed for {video_path}: {e}")
             raise
     
     def _augment_frames_tf(self, frames: np.ndarray) -> np.ndarray:
-        """Augment frames using TensorFlow operations"""
+        """Spatial + temporal augmentation (methods.md)."""
         try:
-            # Convert to tensor
-            frames_tensor = tf.convert_to_tensor(frames, dtype=tf.float32)
-            
-            # Random horizontal flip
-            if random.random() > 0.5:
-                frames_tensor = tf.image.flip_left_right(frames_tensor)
-            
-            # Random brightness adjustment
-            if random.random() > 0.5:
-                frames_tensor = tf.image.random_brightness(frames_tensor, max_delta=0.2)
-            
-            # Random contrast adjustment
-            if random.random() > 0.5:
-                frames_tensor = tf.image.random_contrast(frames_tensor, lower=0.8, upper=1.2)
-            
-            # Geometric rotation is intentionally omitted: tf.image.rot90 only
-            # supports 90° steps and a prior placeholder used k=0 (no-op). Flip /
-            # brightness / contrast above are the active augmentations.
-            
-            return frames_tensor.numpy()
-            
+            from src.video_preprocess import augment_clip
+
+            return augment_clip(
+                frames,
+                rotation_range=float(self.config.get("rotation_range", 15.0)),
+                brightness_delta=float(self.config.get("brightness_range", 0.2)),
+                horizontal_flip=bool(self.config.get("horizontal_flip", True)),
+                temporal_jitter=True,
+                stochastic_drop_prob=float(self.config.get("stochastic_drop_prob", 0.1)),
+            )
         except Exception as e:
             logger.warning(f"Augmentation failed: {e}")
             return frames

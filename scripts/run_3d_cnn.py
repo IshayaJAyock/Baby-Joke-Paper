@@ -162,77 +162,51 @@ def load_data(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarra
         raise
 
 def process_videos_for_3d_cnn(video_paths: List[str], labels: List[int], config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
-    """Process videos for 3D CNN (extract raw frames)"""
+    """Process videos for 3D CNN using methods-aligned frame sampling."""
     try:
-        import cv2
-        
-        logger.info("Processing videos for 3D CNN...")
-        
+        from src.video_preprocess import sample_video_frames, augment_clip
+
+        logger.info("Processing videos for 3D CNN (methods-aligned preprocess)...")
         all_frames = []
         all_labels = []
-        
+        target = (int(config["frame_height"]), int(config["frame_width"]))
+
         for i, (video_path, label) in enumerate(zip(video_paths, labels)):
             try:
-                # Read video
-                cap = cv2.VideoCapture(video_path)
-                if not cap.isOpened():
-                    logger.warning(f"Cannot open video: {video_path}")
-                    continue
-                
-                frames = []
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                
-                # Calculate frame indices for uniform sampling
-                if total_frames <= config['max_frames']:
-                    frame_indices = list(range(total_frames))
-                else:
-                    frame_indices = np.linspace(0, total_frames - 1, config['max_frames'], dtype=int)
-                
-                # Extract frames
-                for frame_idx in frame_indices:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                    ret, frame = cap.read()
-                    if ret:
-                        # Resize frame
-                        frame = cv2.resize(frame, (config['frame_height'], config['frame_width']))
-                        # Convert BGR to RGB
-                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        frames.append(frame)
-                
-                cap.release()
-                
-                if not frames:
+                frames = sample_video_frames(
+                    video_path,
+                    max_frames=int(config["max_frames"]),
+                    target_size=target,
+                    target_fps=float(config.get("target_fps", 20.0)),
+                    use_high_motion=bool(config.get("use_high_motion", True)),
+                    to_rgb=True,
+                    normalize=True,
+                )
+                if frames is None:
                     logger.warning(f"No frames extracted from: {video_path}")
                     continue
-                
-                # Pad or truncate to max_frames
-                while len(frames) < config['max_frames']:
-                    frames.append(frames[-1])  # Repeat last frame
-                
-                frames = frames[:config['max_frames']]
-                
-                # Normalize frames
-                frames = np.array(frames, dtype=np.float32) / 255.0
-                
-                all_frames.append(frames)
+                if bool(config.get("enable_augmentation", True)):
+                    frames = augment_clip(
+                        frames,
+                        rotation_range=float(config.get("rotation_range", 15.0)),
+                        brightness_delta=float(config.get("brightness_range", 0.2)),
+                        horizontal_flip=bool(config.get("horizontal_flip", True)),
+                        stochastic_drop_prob=float(config.get("stochastic_drop_prob", 0.1)),
+                    )
+                all_frames.append(np.asarray(frames, dtype=np.float32))
                 all_labels.append(label)
-                
                 if (i + 1) % 100 == 0:
                     logger.info(f"Processed {i + 1}/{len(video_paths)} videos")
-                    
             except Exception as e:
                 logger.warning(f"Error processing video {video_path}: {e}")
                 continue
-        
+
         if not all_frames:
             raise ValueError("No videos processed successfully")
-        
         X = np.array(all_frames)
         y = np.array(all_labels)
-        
         logger.info(f"Videos processed: {X.shape}, {y.shape}")
         return X, y
-        
     except Exception as e:
         logger.error(f"Video processing failed: {e}")
         raise
@@ -283,7 +257,20 @@ def main():
             'pool_size': std_config.cnn_3d['pool_size'],
             'dropout_rate': std_config.cnn_3d['dropout_rate'],
             'learning_rate': std_config.learning_rate,
-            'batch_size': std_config.batch_size,
+            'batch_size': getattr(std_config, 'batch_size_3d', 8),
+            'target_fps': getattr(std_config, 'target_fps', 20.0),
+            'use_high_motion': getattr(std_config, 'use_high_motion', True),
+            'high_motion_ratio': getattr(std_config, 'high_motion_ratio', 0.5),
+            'enable_augmentation': getattr(std_config, 'enable_augmentation', True),
+            'rotation_range': getattr(std_config, 'rotation_range', 15),
+            'brightness_range': getattr(std_config, 'brightness_range', 0.2),
+            'horizontal_flip': getattr(std_config, 'horizontal_flip', True),
+            'stochastic_drop_prob': getattr(std_config, 'stochastic_drop_prob', 0.1),
+            'label_smoothing': getattr(std_config, 'label_smoothing', 0.05),
+            'adam_beta_1': getattr(std_config, 'adam_beta_1', 0.9),
+            'adam_beta_2': getattr(std_config, 'adam_beta_2', 0.999),
+            'adam_epsilon': getattr(std_config, 'adam_epsilon', 1e-7),
+            'clipnorm': getattr(std_config, 'clipnorm', 1.0),
             'num_epochs': std_config.num_epochs,
             'early_stopping_patience': std_config.early_stopping_patience,
             'early_stopping_start_epoch': getattr(std_config, 'early_stopping_start_epoch', 15),

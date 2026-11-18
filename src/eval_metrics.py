@@ -7,6 +7,7 @@ from typing import Any, Dict
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
+    cohen_kappa_score,
     f1_score,
     precision_score,
     recall_score,
@@ -19,7 +20,7 @@ def classification_metrics(
     y_pred: np.ndarray,
     y_proba: np.ndarray | None = None,
 ) -> Dict[str, Any]:
-    """Return accuracy plus macro and weighted precision/recall/F1 (and AUC if possible)."""
+    """Accuracy, macro/weighted P/R/F1, Cohen's κ (methods.md), optional macro AUC."""
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
     out: Dict[str, Any] = {
@@ -38,6 +39,8 @@ def classification_metrics(
             recall_score(y_true, y_pred, average="weighted", zero_division=0)
         ),
         "f1_weighted": float(f1_score(y_true, y_pred, average="weighted", zero_division=0)),
+        "kappa": float(cohen_kappa_score(y_true, y_pred)),
+        "cohen_kappa": float(cohen_kappa_score(y_true, y_pred)),
     }
     if y_proba is not None:
         try:
