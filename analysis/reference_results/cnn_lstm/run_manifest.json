@@ -1,7 +1,7 @@
 {
   "model": "CNN_LSTM",
   "protocol": "nested_on_training_children_then_refit",
-  "git_commit": "f9f44715cd6daebf7a471bd20d50cbf2913301f7",
+  "git_commit": "e49f8975d3a86e86892336bcb90e9b8fad0dd248",
   "created_at": "2026-11-19T22:28:13",
   "results_role": "frozen_reference_artifacts",
   "config_slice": {
