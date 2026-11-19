@@ -1,7 +1,11 @@
 {
   "role": "index",
   "protocol": "nested_on_training_children_then_refit",
+<<<<<<< Updated upstream
   "git_commit": "55f0906d61a5746a70609d3f1171b4ed48d6a740",
+=======
+  "git_commit": "3043a41fdec5e8681284abb18ec21145c19f3a2f",
+>>>>>>> Stashed changes
   "cohort_fingerprint": {
     "n_rows": 1404,
     "row_hash": "efa8a5e22a4f8082b6707b0ca6fb987eb640b4c8b14cacb0e96d457cec8c1bc4",
