@@ -11,13 +11,17 @@ to ensure consistent hyperparameters, data processing, and evaluation across:
 """
 
 import os
-import yaml
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple, Any
 import logging
 
 logger = logging.getLogger(__name__)
+
+try:
+    import yaml  # required for save_yaml/from_yaml; listed in requirements.txt
+except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore
 
 @dataclass
 class StandardConfig:
@@ -157,6 +161,8 @@ class StandardConfig:
     
     def save_yaml(self, filepath: str) -> None:
         """Save configuration to YAML file"""
+        if yaml is None:
+            raise ImportError("PyYAML is required: pip install PyYAML")
         config_dict = self.to_dict()
         with open(filepath, 'w') as f:
             yaml.dump(config_dict, f, default_flow_style=False, indent=2)
@@ -165,6 +171,8 @@ class StandardConfig:
     @classmethod
     def from_yaml(cls, filepath: str) -> 'StandardConfig':
         """Load configuration from YAML file"""
+        if yaml is None:
+            raise ImportError("PyYAML is required: pip install PyYAML")
         with open(filepath, 'r') as f:
             config_dict = yaml.safe_load(f)
         return cls(**config_dict)

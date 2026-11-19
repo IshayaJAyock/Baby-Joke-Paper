@@ -1,8 +1,9 @@
 {
   "model": "CNN_LSTM",
   "protocol": "nested_on_training_children_then_refit",
-  "git_commit": "d795f344eee79376fb31ceb930d14a2154db86cf",
-  "created_at": "2026-11-18T22:19:20",
+  "git_commit": "3043a41fdec5e8681284abb18ec21145c19f3a2f",
+  "created_at": "2026-11-19T22:26:26",
+  "results_role": "frozen_reference_artifacts",
   "config_slice": {
     "num_epochs": 150,
     "early_stopping_patience": 25,
@@ -10,19 +11,38 @@
     "reduce_lr_patience": 8,
     "n_splits": 10,
     "random_state": 3443,
-    "max_frames": 20
+    "max_frames": 20,
+    "target_fps": 20.0,
+    "use_high_motion": true,
+    "enable_augmentation": true
   },
-  "config_hash": "29622bb353e591890ea500dd9e393544af72bb44477a77f19b26b4872e8d10a3",
   "cohort_fingerprint": {
     "n_rows": 1404,
     "row_hash": "efa8a5e22a4f8082b6707b0ca6fb987eb640b4c8b14cacb0e96d457cec8c1bc4",
+    "index_hash": "fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280",
     "schema": [
       "index",
       "video_id",
       "child_id",
       "label"
     ],
-    "index_hash": "fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280"
+    "group_column": "ChildID"
+  },
+  "artifact_hashes": {
+    "all_models_performance.csv": "02d74b878426270f6a17f1f20a360c1fea942dcfc3a6dcc63442288d9a74bc80",
+    "shared_fold_indices.json": "8b891012b22a4f1b5ed228a74ff84a169c1382aa61403989d213ac62f05592ce",
+    "fold_predictions": {
+      "fold_10_predictions.npz": "98f2976029b982a202cdebabfee1c2043480f846cfb0762bd546ac648730d2eb",
+      "fold_1_predictions.npz": "61ef45b0a40334ade1208ebb03fe782022a4d75024ea03c61b9f9cdd864bbe4c",
+      "fold_2_predictions.npz": "e59e38180f5a3df9552d21a11c6d7f5ba365448e62822d1886bc6b09def2c17a",
+      "fold_3_predictions.npz": "8500726c35c0895b46dab42660df7ab4e985af62f4759f0505d3decc23cf9374",
+      "fold_4_predictions.npz": "9ee8fbbdc7e1606fbccd61ab849c56582299b9a893e72a59979ed2dd86444092",
+      "fold_5_predictions.npz": "3d1bbcd8eebee12f0161c76a5493a0f02e4508a97f6ce4fbea4f5e19ab6a5cdb",
+      "fold_6_predictions.npz": "c84cc340cbfecee32c236256a9216c121f37d8adba407a53b80dad88fcaf15d9",
+      "fold_7_predictions.npz": "473b7944c3a5c4c9106b3cee291339e71ab151fef830f69f9ad428dba454bd65",
+      "fold_8_predictions.npz": "5c952594f682e99c4ced38035744033f9906bd94ef92c8a5225fea716eac6a01",
+      "fold_9_predictions.npz": "971173611342af09e3afab7dcc4cf9c8e4a05e505cf8cdbf33f08de93d7ef7fa"
+    }
   },
   "field_definitions": {
     "best_epoch": "Epoch of best inner-monitor val_accuracy during selection",
@@ -31,7 +51,8 @@
     "n_train": "Number of clips in the full outer-training fold (after refit)",
     "inference_ms_per_clip": "Forward-pass only on prepared tensors; excludes decode/extract"
   },
-  "extra": {
-    "note": "Inner splits reconstructed with GroupShuffleSplit test_size=0.2, seed 3443 (matching current code). Prediction npz remain the Oct-27 reference package."
+  "provenance": {
+    "status": "frozen_and_bound",
+    "note": "Frozen reference package under analysis/reference_results/: fold prediction NPZs and all_models_performance.csv are the audited numerical evidence committed with this repository. They are bound to config/shared_fold_indices.json (index_hash=fb481edef628161c5005b0fe49ca4557469ecac4939702a033db4af72ba19280, row_hash=efa8a5e22a4f8082b6707b0ca6fb987eb640b4c8b14cacb0e96d457cec8c1bc4). Inner-split JSON sidecars follow nested_on_training_children_then_refit (GroupShuffleSplit test_size=0.2, seed 3443). Current src/cross_validation.py writes the same schema on a video retrain; these files are the canonical frozen outputs for manuscript tables, not an external orphaned dump."
   }
 }

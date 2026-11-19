@@ -35,8 +35,8 @@ Joke-type accuracy is **not** a validated measure of responsive caregiving, reci
 
 ### Video Dataset
 - **Cohort after VideoID dedup**: 1,404 clips / 88 infants (13 duplicate VideoIDs dropped; see `config/cohort/`)
-- **Frame sampling (implemented)**: 20 frames per video via uniform `np.linspace` indices
-- **Resolution**: 224×224
+- **Frame sampling (implemented)**: 20 fps timeline → T=20 frames @ 224×224 via uniform∪high-motion selection (`src/video_preprocess.py`)
+- **Augmentation (implemented)**: on by default (rotation, brightness, flip, temporal jitter, stochastic drop)
 - **Formats**: MP4 under `data/videos/`
 
 ### Joke Type Classes (5 Classes) and Description

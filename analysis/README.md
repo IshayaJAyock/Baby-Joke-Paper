@@ -14,6 +14,8 @@
 
 Protocol: **nested_on_training_children_then_refit** (inner ES patience 25 → refit on full outer-train for `best_epoch`).
 
+Provenance (commit binding, artifact hashes, why manifests no longer say “older package”): see `reference_results/RESULTS_PROVENANCE.md`.
+
 ## Notebooks
 
 - `cross_validation_analysis.ipynb` — prefers `reference_results/`, else `../outputs/`

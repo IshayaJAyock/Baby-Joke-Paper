@@ -55,7 +55,7 @@ Fill every item before journal upload. Incomplete declarations are a desk-reject
 - [ ] No visible revision colouring / blank pages
 - [ ] Table 3 units match values (percent vs proportion)
 - [ ] Metric aggregation defined (fold-macro vs pooled-macro vs weighted)
-- [ ] Methods text matches **implemented** pipeline: uniform `np.linspace` 20-frame sampling; main runners use **no** augmentation; ES patience **25**; nested selection then outer-train refit
+- [ ] Methods text matches **implemented** pipeline: 20 fps timeline; T=20 @ 224²; uniform∪high-motion sampling; augmentation **on** (rotation/brightness/flip/jitter/drop); ES patience **25**; nested selection then outer-train refit
 
 ## Scope note
 This repository evaluates **joke-type classification** under infant-held-out nested CV.

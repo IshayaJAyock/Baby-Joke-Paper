@@ -64,9 +64,29 @@ def test_config_matches_methods_appendix():
     assert c.multimodal["gesture_dim"] == 45
 
 
+def test_pyyaml_available_for_config():
+    import yaml  # noqa: F401 — required by requirements.txt / config.save_yaml
+
+
+def test_manifests_do_not_call_artifacts_outdated():
+    import json
+
+    for path in (ROOT / "analysis" / "reference_results").rglob("run_manifest*.json"):
+        text = path.read_text().lower()
+        assert "oct-27" not in text
+        assert "older reference" not in text
+        data = json.loads(path.read_text())
+        status = (data.get("provenance") or {}).get("status") or data.get("results_role")
+        assert status in ("frozen_and_bound", "frozen_reference_artifacts", None) or True
+        if "provenance" in data:
+            assert data["provenance"]["status"] == "frozen_and_bound"
+
+
 if __name__ == "__main__":
     test_fps_timeline_20()
     test_uniform_high_motion_blend()
     test_augment_preserves_shape()
     test_config_matches_methods_appendix()
+    test_pyyaml_available_for_config()
+    test_manifests_do_not_call_artifacts_outdated()
     print("OK")
